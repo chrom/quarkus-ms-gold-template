@@ -6,7 +6,7 @@
 COMPOSE_PROD  := -f deploy/docker-compose.yml
 COMPOSE_METRICS := docker compose -p metrics -f deploy/docker-compose-metrics.yml
 
-.PHONY: help dev dev-secured test verify coverage sbom sbom-show image-scan sonar-local ci-local build-native package-native \
+.PHONY: help dev dev-secured test verify coverage it-pg check-docker sbom sbom-show image-scan sonar-local ci-local build-native package-native \
 	k3d-registry-check docker-build-native-image docker-tag-compose-for-k3d docker-push docker-build-push-native \
 	up-prod stop-prod stop-all clean-prod clean-metrics clean-all docker-clean-project prune-all \
 	up-metrics down-prod down-metrics down-all logs-app logs-db status verify-observability grafana-reset-admin \
@@ -46,8 +46,26 @@ dev-secured: ## 🔐 Dev mode + OIDC profile (needs issuer; see docs/security/oi
 	@if [ "$(SKIP_OPENAPI_VALIDATE)" != "1" ]; then $(MAKE) openapi-check-dev; else echo "  ⚠️  OpenAPI check skipped (SKIP_OPENAPI_VALIDATE=1)"; fi
 	./mvnw quarkus:dev -Dquarkus.profile=dev,secured
 
-test: ## 🧪 Run all integration tests
+# Docker daemon is a hard prerequisite for `test`, `it-pg`, and `verify` — both
+# @QuarkusTest classes (Dev Services) and FlywayMigrationIT (raw Testcontainers) need
+# a reachable engine. Fail fast here instead of leaking confusing Testcontainers stack
+# traces into Surefire/Failsafe output. See ADR 0011.
+check-docker:
+	@docker info >/dev/null 2>&1 || { \
+		echo "  ❌ Docker daemon is not reachable."; \
+		echo "     quarkus-ms-gold-template's test suite runs against PostgreSQL via"; \
+		echo "     Testcontainers (see ADR 0011). Start Docker and retry."; \
+		exit 1; \
+	}
+
+test: check-docker ## 🧪 Run unit + @QuarkusTest classes (PostgreSQL via Dev Services)
 	./mvnw test
+
+it-pg: check-docker ## 🐘 Run only FlywayMigrationIT against a fresh postgres:16-alpine
+	# -Dsurefire.failIfNoSpecifiedTests=false: Surefire's `test` phase still runs even
+	# when we only care about Failsafe IT, so tell it "no match is OK". -Dtest='!*'
+	# keeps Surefire silent; Failsafe picks up IT via -Dit.test.
+	./mvnw -B -ntp verify -DskipITs=false -Dit.test=FlywayMigrationIT -Dtest='!*' -Dsurefire.failIfNoSpecifiedTests=false
 
 # ── OPENAPI (SmallRye — build-time export + validate) ─────────
 # Requires Docker for openapi-validate-* (openapitools/openapi-generator-cli).
@@ -338,7 +356,7 @@ CI_IMAGE_REF  := $(CI_IMAGE_NAME):$(CI_IMAGE_TAG)
 # Pin Trivy to the same major version the workflow uses (aquasecurity/trivy-action@0.28.0).
 TRIVY_IMG     := aquasec/trivy:0.58.1
 
-verify: ## ✅ CI-parity: mvn clean verify -DskipITs=false (tests + JaCoCo + SBOM)
+verify: check-docker ## ✅ CI-parity: mvn clean verify -DskipITs=false (tests + JaCoCo + SBOM)
 	@echo "  ▶ Full verify (unit + IT + coverage + SBOM) …"
 	./mvnw -B -ntp clean verify -DskipITs=false
 	@echo "  ✅ JaCoCo: target/site/jacoco/index.html"

@@ -128,6 +128,42 @@
             <version>1.4.1</version>
             <scope>test</scope>
         </dependency>
+        <!--
+          Testcontainers PostgreSQL module. @QuarkusTest classes already get a managed
+          container through Quarkus Dev Services (quarkus-jdbc-postgresql + Docker on
+          PATH); this dependency is required for the standalone FlywayMigrationIT, which
+          bypasses the Quarkus test bootstrap to exercise db/migration/*.sql against a
+          clean container.
+
+          Note the artefactId: Testcontainers 2.x (pulled via quarkus-bom 3.34.x) renamed
+          org.testcontainers:postgresql -> org.testcontainers:testcontainers-postgresql.
+          The legacy coordinate still resolves on Central but is not BOM-managed, so
+          Maven would demand an explicit version. Using the new coordinate keeps version
+          management centralised in quarkus-bom.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- JUnit 5 extension: enables @Testcontainers / @Container on FlywayMigrationIT. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          Flyway 10+ split the PostgreSQL dialect into a separate plugin jar. Quarkus pulls
+          it in transitively at runtime via quarkus-flyway, but FlywayMigrationIT invokes
+          Flyway directly (outside the Quarkus test bootstrap), so the plugin must be
+          visible on the Failsafe classpath as an explicit test dependency — otherwise
+          Flyway fails fast with "No Flyway database plugin found to handle jdbc:postgresql".
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
