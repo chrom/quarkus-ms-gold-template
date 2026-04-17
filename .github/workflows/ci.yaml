@@ -238,7 +238,91 @@ jobs:
           vuln-type: 'os,library'
 
   # ─────────────────────────────────────────────────────────────────────────
-  # Job 4: SonarQube analysis. Conditional on SONAR_HOST_URL being configured.
+  # Job 4: Helm chart render gate (ADR 0010).
+  # Cheap, fast, no cluster required. Asserts that:
+  #   a) `helm lint` passes on the raw chart;
+  #   b) rendering against values-prod.yaml produces a NetworkPolicy (env-split rule);
+  #   c) rendering against values-prod.yaml produces a PodDisruptionBudget;
+  #   d) the deprecated `Ingress` template is absent from all renders.
+  # This catches accidental re-introduction of the Ingress template or the
+  # `networkPolicy.enabled` flip-off in prod before a PR reaches review.
+  # ─────────────────────────────────────────────────────────────────────────
+  helm-validate:
+    name: helm render gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: helm lint
+        run: helm lint deploy/helm
+
+      # Build the postgresql subchart once — `helm template` fails hard if the chart
+      # has unresolved dependencies even when the subchart is disabled.
+      - name: helm dependency build
+        run: helm dependency build deploy/helm
+
+      # All render assertions target OUR chart only. `postgresql.enabled=false` silences
+      # the bitnami/postgresql subchart (which ships its own NetworkPolicy + PDB and
+      # would otherwise poison the grep-based assertions below).
+      - name: Render default values (dev/local profile — NetworkPolicy OFF)
+        run: |
+          set -euo pipefail
+          helm template release deploy/helm \
+            -f deploy/helm/values.yaml \
+            --set postgresql.enabled=false \
+            --set image.repository=example/quarkus-ms-gold-template \
+            --set image.tag=ci > /tmp/render-default.yaml
+          if grep -q '^kind: NetworkPolicy$' /tmp/render-default.yaml; then
+            echo "FAIL: default values must NOT render a NetworkPolicy (k3d/flannel has no enforcement — see ADR 0010)." >&2
+            exit 1
+          fi
+          if grep -q '^kind: Ingress$' /tmp/render-default.yaml; then
+            echo "FAIL: Ingress template was resurrected — routing is owned by Gateway API in infra-bootstrap (ADR 0010)." >&2
+            exit 1
+          fi
+          echo "OK: default render is clean."
+
+      - name: Render stage values — assert NetworkPolicy is ON
+        run: |
+          set -euo pipefail
+          helm template release deploy/helm \
+            -f deploy/helm/values.yaml \
+            -f deploy/helm/values-stage.yaml \
+            --set postgresql.enabled=false \
+            --set image.repository=example/quarkus-ms-gold-template \
+            --set image.tag=ci > /tmp/render-stage.yaml
+          grep -q '^kind: NetworkPolicy$'       /tmp/render-stage.yaml || { echo "FAIL: stage render missing NetworkPolicy" >&2; exit 1; }
+          grep -q '^kind: PodDisruptionBudget$' /tmp/render-stage.yaml || { echo "FAIL: stage render missing PodDisruptionBudget" >&2; exit 1; }
+          ! grep -q '^kind: Ingress$'           /tmp/render-stage.yaml || { echo "FAIL: stage render contains legacy Ingress"   >&2; exit 1; }
+          echo "OK: stage render has NetworkPolicy + PDB, no Ingress."
+
+      - name: Render prod values — assert NetworkPolicy is ON and pod is hardened
+        run: |
+          set -euo pipefail
+          helm template release deploy/helm \
+            -f deploy/helm/values.yaml \
+            -f deploy/helm/values-prod.yaml \
+            --set postgresql.enabled=false \
+            --set image.repository=example/quarkus-ms-gold-template \
+            --set image.tag=ci \
+            --set oidc.authServerUrl=https://kc.example.com/realms/demo \
+            --set oidc.clientId=quarkus-ms-gold-template-api > /tmp/render-prod.yaml
+          grep -q '^kind: NetworkPolicy$'       /tmp/render-prod.yaml || { echo "FAIL: prod render missing NetworkPolicy"       >&2; exit 1; }
+          grep -q '^kind: PodDisruptionBudget$' /tmp/render-prod.yaml || { echo "FAIL: prod render missing PodDisruptionBudget" >&2; exit 1; }
+          ! grep -q '^kind: Ingress$'           /tmp/render-prod.yaml || { echo "FAIL: prod render contains legacy Ingress"     >&2; exit 1; }
+          # Pod hardening sanity — runAsNonRoot + readOnlyRootFilesystem must be present.
+          grep -q 'readOnlyRootFilesystem: true' /tmp/render-prod.yaml || { echo "FAIL: prod render missing readOnlyRootFilesystem: true" >&2; exit 1; }
+          grep -q 'runAsNonRoot: true'           /tmp/render-prod.yaml || { echo "FAIL: prod render missing runAsNonRoot: true"           >&2; exit 1; }
+          echo "OK: prod render has NetworkPolicy + PDB + hardened securityContext."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 5: SonarQube analysis. Conditional on SONAR_HOST_URL being configured.
   # Skipped automatically until the self-hosted server is reachable.
   # ─────────────────────────────────────────────────────────────────────────
   sonar:
@@ -288,7 +372,7 @@ jobs:
   ci-passed:
     name: ci-passed
     runs-on: ubuntu-latest
-    needs: [test, build-image, scan-image, sonar]
+    needs: [test, build-image, scan-image, helm-validate, sonar]
     if: always()
     steps:
       - name: Fail if any dependency failed or was cancelled

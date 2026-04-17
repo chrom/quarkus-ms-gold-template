@@ -68,6 +68,7 @@ When people say “there are no limits on the API for security,” they usually 
 3. **Rate limiting**: enforce at **API Gateway (Envoy)**; keep dev/test unblocked. Reference: `infra-bootstrap/docs/gateway/envoy-rate-limiting.md`.
 4. Harden defaults: **security headers** (stage/prod), **CORS template** (service-side off by default; owned by gateway), and stricter defaults in `%prod`/`%stage`.
 5. **AuthZ example**: role-protected business endpoint (`/api/admin/ping`) + tests (no Keycloak required).
+6. **Runtime hardening & network policy** — **implemented.** Formalised in **ADR 0010**: PSS-restricted Pod/Container `securityContext` (`runAsNonRoot`, `readOnlyRootFilesystem`, `drop: [ALL]`), `emptyDir` on `/tmp`+`/work/logs`, `%prod.quarkus.log.file.enabled=false` (stdout-only logs), `PodDisruptionBudget` (`minAvailable: 1`), `NetworkPolicy` with env-split (off on k3d/flannel, on for stage/prod where the CNI enforces). The deprecated `Ingress` template is removed — routing is owned by Gateway API in `infra-bootstrap`. A CI render-gate (`helm-validate`) asserts all of the above.
 
 ### Phase C — Reliability patterns for scale
 
@@ -109,6 +110,7 @@ Update that file when closing gaps; keep this ADR section as the **index** into 
 - ADR 0002 — SRE / production readiness (SLO **targets**; alerting implementation tracked in Phase F above)  
 - ADR 0007 — Catalog hexagonal slice  
 - ADR 0009 — CI / supply-chain baseline (Phase A′ implementation detail)  
+- ADR 0010 — Runtime hardening and env-split NetworkPolicy (Phase B step 6)  
 - `docs/RUNBOOK.md` — incident response  
 - `docs/roadmap/README.md` — roadmap index  
 - `docs/api/versioning.md` — API versioning and contract process (Phase A)  

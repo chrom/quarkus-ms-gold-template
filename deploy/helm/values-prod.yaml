@@ -11,6 +11,15 @@ oidc:
   authServerUrl: ""   # REQUIRED: QUARKUS_OIDC_AUTH_SERVER_URL
   clientId: ""        # REQUIRED: QUARKUS_OIDC_CLIENT_ID
 
+# Routing on prod is owned by the platform Gateway API (infra-bootstrap).
+# Add/update the relevant HTTPRoute there rather than enabling Ingress here.
+
+# Prod must run on a NetworkPolicy-enforcing CNI (Cilium / Calico / …).
+# A CI gate in .github/workflows/ci.yaml asserts that `helm template -f values-prod.yaml`
+# renders a NetworkPolicy — see ADR 0010.
+networkPolicy:
+  enabled: true
+
 # database:
 #   existingSecret: my-prod-db-secret
 #   existingSecretKey: jdbc-url

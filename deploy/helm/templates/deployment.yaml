@@ -17,10 +17,30 @@ spec:
         {{- include "chart.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "chart.serviceAccountName" . }}
+      # Pod-level hardening (PSS: restricted). See ADR 0010.
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Writable scratch for Quarkus temp files + access-log spool + JVM native scratch.
+      # Required because the container runs with readOnlyRootFilesystem: true.
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: logs
+          emptyDir:
+            sizeLimit: 128Mi
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Container-level hardening — mirrors pod-level, adds cap-drop & read-only FS.
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /work/logs
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

@@ -104,6 +104,33 @@ To build a native image (optional) and run everything in containers:
 make up-prod
 ```
 
+### 4. Deploying to Kubernetes (Helm)
+
+The chart under `deploy/helm/` ships with hardened defaults: restricted Pod Security
+Standards (`runAsNonRoot`, `readOnlyRootFilesystem`, all capabilities dropped),
+a `PodDisruptionBudget`, and an env-split `NetworkPolicy` that is **off** in
+`values.yaml` (k3d/flannel does not enforce NetworkPolicy) and **on** in
+`values-stage.yaml` / `values-prod.yaml`. See [ADR 0010](docs/adr/0010-runtime-hardening-and-network-policy.md).
+
+```bash
+# local k3d (NetworkPolicy off, postgresql subchart on)
+helm upgrade --install my-svc deploy/helm -f deploy/helm/values.yaml
+
+# stage / prod — image tag and OIDC values must come from your pipeline
+helm upgrade --install my-svc deploy/helm \
+  -f deploy/helm/values.yaml -f deploy/helm/values-prod.yaml \
+  --set image.tag="$GIT_SHA" \
+  --set oidc.authServerUrl="https://kc.example.com/realms/prod" \
+  --set oidc.clientId="my-svc-api"
+```
+
+**Routing (Host → Service) is NOT done by this chart.** The platform owns that
+surface via Gateway API (Envoy Gateway + `HTTPRoute`) in the `infra-bootstrap`
+repo. This chart renders a `ClusterIP` `Service`; to expose the service externally,
+add an `HTTPRoute` in `infra-bootstrap/k8s/gateway/routes/` that targets the
+`Service` name rendered by this release. This keeps routing policy centralised and
+prevents silent `Ingress ↔ HTTPRoute` drift.
+
 ---
 
 ## 📄 OpenAPI Mastery

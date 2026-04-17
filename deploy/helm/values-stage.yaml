@@ -24,10 +24,13 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
 
-ingress:
+# Routing on stage is owned by the platform Gateway API (infra-bootstrap).
+# Add/update the relevant HTTPRoute there rather than re-enabling Ingress here.
+
+# Stage cluster is assumed to have a NetworkPolicy-enforcing CNI (e.g. Cilium / Calico).
+# See ADR 0010 for the env-split rationale.
+networkPolicy:
   enabled: true
-  className: "traefik"          # or "nginx" depending on cluster ingress controller
-  host: "my-service.stage.example.com"   # override per service
 
 resources:
   requests:

@@ -1,0 +1,24 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+# PodDisruptionBudget — guarantees minimum availability during *voluntary* disruptions
+# (cluster autoscaler scale-down, node drains, node image rollouts). Does NOT protect
+# against involuntary disruptions (node crash, kernel panic) — use replicas + HPA for that.
+#
+# Rationale: ADR 0002 (SRE production readiness) + ADR 0010 (runtime hardening).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "chart.fullname" . }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- else if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+{{- end }}

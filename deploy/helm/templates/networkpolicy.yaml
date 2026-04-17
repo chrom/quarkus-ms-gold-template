@@ -1,0 +1,62 @@
+{{- if .Values.networkPolicy.enabled }}
+# NetworkPolicy — default-deny for the pod selector below, then explicit allow-rules.
+# Only effective on clusters whose CNI implements enforcement (Cilium, Calico, Antrea,
+# native k8s on EKS/GKE). Flannel (k3d default) accepts the object but ignores it —
+# that is why `enabled: false` is the default in values.yaml and must be flipped ON in
+# values-stage.yaml / values-prod.yaml. See ADR 0010.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chart.fullname" . }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow inbound traffic from configured namespaces (identified by the well-known
+    # `kubernetes.io/metadata.name` label that kube-apiserver automatically attaches
+    # to every Namespace). Port `http` matches the named port in deployment.yaml.
+    {{- range .Values.networkPolicy.ingressFromNamespaces }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+      ports:
+        - protocol: TCP
+          port: http
+    {{- end }}
+    {{- with .Values.networkPolicy.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  egress:
+    # DNS — required for everything that resolves a hostname.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Same-namespace peers (PostgreSQL subchart, sidecars, release-scoped workloads).
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+    # Configured outbound namespaces (OTLP collector, external OIDC, etc.).
+    {{- range .Values.networkPolicy.egressToNamespaces }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.networkPolicy.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

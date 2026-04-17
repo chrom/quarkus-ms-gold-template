@@ -25,15 +25,64 @@ service:
   type: ClusterIP
   port: 8080
 
-# ── Ingress ────────────────────────────────────
-# k3d: Traefik is the default IngressClass — set enabled=true so http://my-service.localhost/ reaches the app.
-ingress:
+# ── Routing / L7 exposure ──────────────────────
+# North-south routing (Host/path → Service) is handled by the platform in `infra-bootstrap`
+# via Gateway API (Envoy Gateway + HTTPRoute). This chart intentionally does NOT ship an
+# `Ingress` template: maintaining two routing surfaces (Ingress here + HTTPRoute in infra)
+# leads to silent drift and conflicting 2×-backends on the same host.
+#
+# To expose this service, add an `HTTPRoute` in `infra-bootstrap/k8s/gateway/routes/`
+# pointing at the `Service` rendered by this chart. See docs/adr/0010-*.md §"Exposure".
+
+# ── Pod hardening (Pod Security Standards — restricted) ──────────────
+# All three settings below are required for the `restricted` PSS level.
+# Mutate these in values-*.yaml overrides rather than inline in templates.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001          # matches `USER 1001` in Dockerfile.native-micro / .jvm
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true    # requires an emptyDir on /tmp — provided by deployment.yaml
+  runAsNonRoot: true
+  capabilities:
+    drop: ["ALL"]
+
+# ── Disruption budget (SRE — minimum availability during voluntary disruptions) ──
+podDisruptionBudget:
   enabled: true
-  className: "traefik"          # k3d default; cloud: nginx / alb / etc.
-  host: "my-service.localhost"
-  path: /
-  pathType: Prefix
-  tls: []
+  # Use `minAvailable` or `maxUnavailable`, not both. `minAvailable: 1` means the
+  # evictor (cluster autoscaler, node drain, …) will keep ≥ 1 pod running.
+  minAvailable: 1
+  # maxUnavailable: ""
+
+# ── NetworkPolicy (env-split — see ADR 0010) ───────────────
+# IMPORTANT: a NetworkPolicy only takes effect when the cluster CNI enforces it.
+# Flannel (k3d default) does NOT enforce — objects are accepted but ignored. Cilium /
+# Calico / native NetworkPolicy-capable CNIs DO enforce. Therefore this chart ships
+# with `enabled: false` in values.yaml (local/dev on k3d/flannel) and `enabled: true`
+# in values-stage.yaml / values-prod.yaml (clusters with enforcement).
+networkPolicy:
+  enabled: false
+  # Namespaces allowed to reach the pod's HTTP port. Uses the well-known
+  # `kubernetes.io/metadata.name` label injected into every namespace by kube-apiserver.
+  ingressFromNamespaces:
+    - gateway-system   # Envoy Gateway (north-south traffic)
+    - monitoring       # Prometheus scrape of /q/metrics
+  # Namespaces the pod is allowed to egress to. DNS (kube-system) and same-namespace
+  # (PostgreSQL subchart, sidecars) are added automatically in the template.
+  egressToNamespaces:
+    - monitoring       # OTLP → tempo / alloy
+    - keycloak         # OIDC discovery + JWKs
+  # Escape hatches — raw NetworkPolicyIngress/EgressRule entries appended to the generated
+  # policy. Useful for services that legitimately talk to the public internet or to
+  # peers in non-default namespaces without polluting the generic defaults above.
+  extraIngress: []
+  extraEgress: []
 
 # ── Resources (SRE Rule: always set limits) ────
 resources:
