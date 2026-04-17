@@ -1,0 +1,146 @@
+# ==============================================
+# Gold Template Helm Chart — Default Values
+# ==============================================
+# Override per environment:
+#   helm install ... -f values-stage.yaml
+#   helm install ... --set image.tag=abc123
+
+# ── Image ──────────────────────────────────────
+image:
+  repository: ghcr.io/your-org/quarkus-ms-gold-template   # override per service
+  tag: "latest"                                            # SET in CI: --set image.tag=${{ github.sha }}
+  pullPolicy: IfNotPresent
+
+# ── Replicas / Scaling ─────────────────────────
+replicaCount: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+# ── Service ────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080
+
+# ── Ingress ────────────────────────────────────
+# k3d: Traefik is the default IngressClass — set enabled=true so http://my-service.localhost/ reaches the app.
+ingress:
+  enabled: true
+  className: "traefik"          # k3d default; cloud: nginx / alb / etc.
+  host: "my-service.localhost"
+  path: /
+  pathType: Prefix
+  tls: []
+
+# ── Resources (SRE Rule: always set limits) ────
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "1000m"
+
+# ── Service Account ────────────────────────────
+serviceAccount:
+  create: true
+  name: ""           # auto-generated if empty
+
+# ── Application Config ─────────────────────────
+app:
+  profile: prod                  # QUARKUS_PROFILE
+  jvmMaxRamPercentage: "75.0"    # -XX:MaxRAMPercentage — headroom for off-heap
+
+# ── Health Probes (Quarkus SmallRye Health) ────
+probes:
+  liveness:
+    path: /q/health/live
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /q/health/ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# ── Observability (ADR 0002) ───────────────────
+monitoring:
+  # ServiceMonitor — Prometheus Operator auto-discovery
+  serviceMonitor:
+    enabled: true
+    interval: "15s"
+    scrapeTimeout: "12s"
+    path: /q/metrics
+    # Must match the label selector in infra-bootstrap helm/observability/values.yaml
+    labels:
+      release: kube-prometheus-stack
+
+  # Grafana Dashboard — ConfigMap sidecar auto-discovery
+  dashboard:
+    enabled: true
+    # Must match grafana.sidecar.dashboards.label in infra-bootstrap
+    label: grafana_dashboard
+    labelValue: "1"
+    folder: "Services"
+
+# ── Keycloak Client Registration (ADR 0002 §3) ─
+# Phase 1: disabled — client created manually in realm JSON
+# Phase 2: enable + provide adminSecretRef
+keycloak:
+  registration:
+    enabled: false
+    url: "http://keycloak.keycloak.svc.cluster.local:8180"
+    realm: "gold-dev"
+    adminSecretRef:
+      name: keycloak-admin-credentials   # SealedSecret in infra-bootstrap
+      userKey: username
+      passwordKey: password
+
+# ── OIDC (optional — enable for secured profile) ─
+oidc:
+  enabled: true
+  # In-cluster Keycloak (infra-bootstrap) issuer URL:
+  authServerUrl: "http://keycloak.keycloak.svc.cluster.local:8180/realms/gold-dev"   # QUARKUS_OIDC_AUTH_SERVER_URL
+  # Resource server client id (realm JSON): override per service if renamed.
+  clientId: "quarkus-ms-gold-template-api"        # QUARKUS_OIDC_CLIENT_ID
+  # clientSecret: ""                             # QUARKUS_OIDC_CLIENT_SECRET (optional)
+
+# ── OTLP Tracing ──────────────────────────────
+tracing:
+  enabled: true
+  endpoint: "http://tempo-distributor.monitoring.svc.cluster.local:4317"   # Tempo in cluster (tempo-distributed)
+  # Quarkus OTEL: make traces deterministic in local k3d
+  sampler: "always_on"
+
+# ── Database (PostgreSQL via bitnami/postgresql subchart) ───
+# For local k3d: enabled=true spins up a dedicated postgres pod.
+# For stage/prod: set enabled=false and override externalDatabase.*
+database:
+  url: ""  # auto-built from postgresql subchart if empty; override for external DB
+  username: quarkus
+  password: quarkus
+  name: quarkus
+# For stage/prod (recommended): inject JDBC URL via a SealedSecret/ExternalSecret:
+# database.existingSecret: my-db-secret
+# database.existingSecretKey: jdbc-url
+# Keyed secret ref (optional — override with SealedSecret for stage/prod):
+# database.existingSecret: my-db-secret
+# database.existingSecretKey: jdbc-url
+
+postgresql:
+  enabled: true
+  image:
+    tag: latest   # always pull latest; Bitnami removes old pinned tags from Docker Hub
+  auth:
+    username: quarkus
+    password: quarkus
+    database: quarkus
+  primary:
+    persistence:
+      size: 1Gi

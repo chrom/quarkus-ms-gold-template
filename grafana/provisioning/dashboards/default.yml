@@ -1,0 +1,14 @@
+# Autoload JSON dashboards from repository (folder 'Quarkus Template' in UI).
+apiVersion: 1
+
+providers:
+  - name: quarkus-ms-gold-template
+    orgId: 1
+    folder: ''
+    folderUid: quarkus-ms-gold-template-folder
+    type: file
+    disableDeletion: false
+    editable: true
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

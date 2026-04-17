@@ -1,0 +1,259 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: platform-engineering
+  description: Platform services and templates
+spec:
+  owner: group:default/team-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: team-platform
+  namespace: default
+spec:
+  type: team
+  profile:
+    displayName: Platform / template maintainers
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: quarkus-ms-gold-template
+  title: Quarkus MS Gold Template
+  description: >
+    Reference Quarkus microservice (REST, Panache, PostgreSQL) with observability
+    notes and an internal Quarkus course in docs/.
+  tags:
+    - java
+    - quarkus
+    - microservice
+    - hexagonal
+    - archunit
+    - prometheus
+    - opentelemetry
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+  links:
+    - url: http://localhost:8080/q/swagger-ui
+      title: Swagger UI (dev / local prod)
+      icon: docs
+    - url: http://localhost:3000
+      title: Grafana (local — after make up-metrics)
+      icon: dashboard
+    - url: http://localhost:9090
+      title: Prometheus (local)
+      icon: catalog
+    - url: http://localhost:16686
+      title: Jaeger UI (local)
+      icon: search
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/team-platform
+  system: platform-engineering
+  providesApis:
+    - quarkus-ms-gold-template-rest
+---
+# OpenAPI from repository (Quarkus SmallRye). Required for Backstage "Provided APIs" — without kind: API section is empty.
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: quarkus-ms-gold-template-rest
+  title: Quarkus Gold Template REST API
+  description: >
+    OpenAPI 3.1 (generated / committed artifact). Alternative: openapi/openapi-dev.yaml
+    for editing convenience — a stable openapi.json is better for the catalog.
+  tags:
+    - openapi
+    - rest
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:default/team-platform
+  system: platform-engineering
+  definition:
+    $text: ./openapi/openapi.json
+---
+# Local observability stack documented for Backstage (URLs/ports assume deploy/docker-compose-metrics.yml on localhost).
+# Run: make up-metrics from repo root. App: make up-prod or ./mvnw quarkus:dev on :8080.
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: quarkus-gold-observability-local
+  title: Gold Template — local observability stack
+  description: |
+    ## Purpose
+
+    A set of services for **metrics**, **logs**, and **traces** during local development and demos.
+    Compose file: `deploy/docker-compose-metrics.yml` (Docker Compose project: `metrics`). The Quarkus application is **not** included in this compose — it is started separately (`make up-prod` or `./mvnw quarkus:dev`) so that Prometheus can scrape `http://host.docker.internal:8080/q/metrics`.
+
+    ## Operation Schema
+
+    ```mermaid
+    flowchart TB
+      subgraph app["Application (host / prod compose)"]
+        Q["Quarkus :8080\n/q/metrics + OTLP"]
+      end
+      subgraph obs["docker-compose-metrics.yml"]
+        PR["Prometheus :9090"]
+        GR["Grafana :3000"]
+        LO["Loki :3100"]
+        AL["Alloy :12345"]
+        JA["Jaeger :16686\nOTLP :4317/:4318"]
+      end
+      Q -->|scrape /q/metrics| PR
+      Q -->|OTLP gRPC| JA
+      AL -->|push| LO
+      PR --> GR
+      LO --> GR
+      JA --> GR
+    ```
+
+    - **Metrics:** Prometheus reads Micrometer from the `/q/metrics` endpoint (config: `deploy/monitoring/prometheus.yml`, target `host.docker.internal:8080`).
+    - **Traces:** Quarkus sends OTLP to `localhost:4317` (gRPC); Jaeger all-in-one receives and shows UI on `:16686`. In the prod compose, `QUARKUS_OTEL_EXPORTER_OTLP_ENDPOINT` is set to the host for the backend.
+    - **Logs:** Grafana Alloy reads **Docker container** logs (`docker.sock`) and pushes to Loki. The `quarkus:dev` process on the host is **not** included in these streams — only containerized services.
+
+    Grafana provisioned: data sources Prometheus, Loki, Jaeger; dashboard `grafana/dashboards/quarkus-overview.json`; trace ↔ logs ↔ metrics links (`traceToMetrics`, derived fields in Loki).
+
+    ## Default Port Map
+
+    | Port | Service | Purpose |
+    |------|---------|---------|
+    | **8080** | Quarkus app | HTTP API, `/q/metrics`, Swagger (`/q/swagger-ui`), health |
+    | **3000** | Grafana | Web UI, dashboards, Explore |
+    | **9090** | Prometheus | Metrics UI and API, scrape targets |
+    | **3100** | Loki | Logs HTTP API (`/ready`, push from Alloy) |
+    | **12345** | Grafana Alloy | Logs collector agent HTTP API / UI |
+    | **16686** | Jaeger | Traces search web UI |
+    | **4317** | Jaeger | OTLP **gRPC** (default for Quarkus `protocol=grpc`) |
+    | **4318** | Jaeger | OTLP **HTTP/protobuf** |
+    | **5432** | PostgreSQL | Only in `deploy/docker-compose.yml` (prod stack), not in metrics compose |
+
+    ## URLs (localhost)
+
+    - Grafana: http://localhost:3000
+    - Prometheus: http://localhost:9090
+    - Jaeger UI: http://localhost:16686
+    - Loki API: http://localhost:3100
+    - Alloy: http://localhost:12345
+    - Application (separate): http://localhost:8080
+
+    ## Credentials and Security (local stack only)
+
+    | Service | Login | Password / Note |
+    |---------|-------|-----------------|
+    | **Grafana** | `admin` | `admin` (`GF_SECURITY_ADMIN_PASSWORD` in compose; for demo) |
+    | **Prometheus** | — | No authentication by default |
+    | **Jaeger** (all-in-one) | — | UI without login in dev image |
+    | **Loki** | — | No authentication in this compose |
+    | **Alloy** | — | Check Alloy documentation for production hardening |
+
+    See `.env.example` for **prod** DB secrets → copy to `.env.prod` (no passwords in repository).
+
+    ## Commands
+
+    - `make up-metrics` — start monitoring stack
+    - `make down-metrics` — stop
+    - `make verify-observability` — quick endpoint health check
+    - More details: `docs/observability/`, `Makefile` (`up-prod`, `up-metrics` targets)
+
+  tags:
+    - prometheus
+    - grafana
+    - loki
+    - jaeger
+    - opentelemetry
+    - alloy
+    - docker
+  links:
+    - url: http://localhost:3000
+      title: Grafana
+      icon: dashboard
+    - url: http://localhost:9090
+      title: Prometheus
+      icon: catalog
+    - url: http://localhost:16686
+      title: Jaeger UI
+      icon: search
+    - url: http://localhost:3100
+      title: Loki API
+      icon: docs
+    - url: http://localhost:12345
+      title: Grafana Alloy
+      icon: memory
+spec:
+  type: observability-stack
+  lifecycle: experimental
+  owner: group:default/team-platform
+  system: platform-engineering
+---
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: create-quarkus-microservice
+  title: New Quarkus Microservice
+  description: Creates a new production-ready Quarkus microservice based on the Gold Template.
+  tags:
+    - java
+    - quarkus
+    - rest
+spec:
+  owner: group:default/team-platform
+  type: service
+  parameters:
+    - title: Microservice Configuration
+      required:
+        - component_id
+        - java_package
+      properties:
+        component_id:
+          title: Name
+          type: string
+          description: Unique name of the component (e.g., identity-service).
+          ui:field: EntityNamePicker
+        java_package:
+          title: Java Package
+          type: string
+          description: Base Java package (e.g., com.company.identity).
+          default: "com.company.service"
+    - title: Repository Setup
+      required:
+        - repoUrl
+      properties:
+        repoUrl:
+          title: Repository Location
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
+  steps:
+    - id: fetch-base
+      name: Fetching Gold Template
+      action: fetch:template
+      input:
+        url: ./
+        values:
+          name: ${{ values.component_id }}
+          java_package: ${{ values.java_package }}
+    - id: publish
+      name: Publishing to Source Control
+      action: publish:github
+      input:
+        allowedHosts: ['github.com']
+        description: This is ${{ values.component_id }}
+        repoUrl: ${{ values.repoUrl }}
+    - id: register
+      name: Registering in Backstage Catalog
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish'].output.remoteUrl }}
+      - title: Open in Backstage
+        url: ${{ steps['register'].output.entityRef }}

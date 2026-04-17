@@ -1,0 +1,22 @@
+# Grafana 11.6 + Loki 3.x (deploy/docker-compose-metrics.yml).
+# Docs: https://grafana.com/docs/grafana/v11.6/datasources/loki/configure-loki-data-source/
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        # Regex on log line; Quarkus JSON prod logs include "traceId" (see application.properties).
+        # Internal link → Jaeger; $${...} is YAML escaping for Grafana (${__value.raw}).
+        - name: traceId
+          matcherRegex: '"traceId"\s*:\s*"([^"]+)"'
+          url: '$${__value.raw}'
+          datasourceUid: jaeger
+          urlDisplayLabel: View trace
+          internalLink: true

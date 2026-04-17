@@ -1,0 +1,12 @@
+global:
+  # Under load /q/metrics can be slow; timeout must be < scrape_interval (no overlapping scrapes).
+  scrape_interval: 15s
+  scrape_timeout: 12s
+
+scrape_configs:
+  - job_name: 'quarkus-ms-gold-template'
+    metrics_path: '/q/metrics'
+    static_configs:
+      # Application is separate from this compose (make up-prod or quarkus:dev on host:8080).
+      # Prometheus in a container reaches the process on the host via host.docker.internal.
+      - targets: ['host.docker.internal:8080']

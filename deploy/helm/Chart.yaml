@@ -1,0 +1,23 @@
+apiVersion: v2
+name: quarkus-microservice
+description: >
+  Gold Standard Helm chart for Quarkus microservices.
+  Provides automatic registration with:
+    - Prometheus via ServiceMonitor CRD (ADR 0002 §1)
+    - Grafana via ConfigMap sidecar (ADR 0002 §2)
+    - Keycloak via post-install Job (ADR 0002 §3, disabled by default)
+
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+keywords: [quarkus, microservice, java, rest, gold-template]
+maintainers:
+  - name: team-platform
+    url: https://github.com/your-org/infra-bootstrap
+
+dependencies:
+  - name: postgresql
+    version: "16.x.x"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: postgresql.enabled

@@ -1,0 +1,28 @@
+# ═══════════════════════════════════════════════════════════════
+# Grafana Dashboard ConfigMap — Auto-registration (ADR 0002 §2)
+# ═══════════════════════════════════════════════════════════════
+# How it works:
+#   1. ConfigMap is created on 'helm install' with the dashboard JSON embedded
+#   2. Grafana sidecar (in kube-prometheus-stack) watches all namespaces for
+#      ConfigMaps with label grafana_dashboard=1
+#   3. Dashboard is hot-loaded into Grafana — no Grafana restart needed
+#   4. Dashboard appears in folder "Services" in the Grafana UI
+#   5. 'helm uninstall' removes ConfigMap → dashboard disappears from Grafana
+#
+# Dashboard source of truth: deploy/helm/files/dashboards/quarkus-overview.json
+# Sync from local grafana: make helm-sync-dashboard (in Gold Template Makefile)
+# ═══════════════════════════════════════════════════════════════
+{{- if .Values.monitoring.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chart.fullname" . }}-dashboard
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    # Grafana sidecar selector — must match sidecar.dashboards.label in observability values
+    {{ .Values.monitoring.dashboard.label }}: {{ .Values.monitoring.dashboard.labelValue | quote }}
+    grafana_folder: {{ .Values.monitoring.dashboard.folder | quote }}
+data:
+  {{ include "chart.name" . }}-overview.json: |
+    {{- .Files.Get "files/dashboards/quarkus-overview.json" | nindent 4 }}
+{{- end }}

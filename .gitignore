@@ -1,0 +1,77 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+release.properties
+.flattened-pom.xml
+
+# Eclipse (local only — not tracked)
+.classpath
+.project
+.settings/
+bin/
+
+# IntelliJ
+.idea/
+*.ipr
+*.iml
+*.iws
+
+# NetBeans
+nb-configuration.xml
+
+# Visual Studio Code
+.vscode/
+.factorypath
+
+# Quarkus (dev mode, CLI cache, build analytics)
+.quarkus/
+
+# Application logs (quarkus.log.file.*, access log)
+logs/
+*.log
+
+# OpenAPI — keep *.yaml committed; generated JSON duplicates noise (regenerate with make openapi-generate*)
+openapi/openapi-dev.json
+openapi/openapi-dev.yaml
+openapi/.openapi-committed.tmp.yaml
+
+# k6 (optional output directory)
+k6-results/
+
+# JVM crash / heap dumps (local artifacts)
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
+
+# OSX
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Vim
+*.swp
+*.swo
+
+# patch
+*.orig
+*.rej
+
+# Local environment (do not commit secrets)
+.env
+.env.prod
+.env.*
+!.env.example
+
+# TLS certificates (local)
+.certs/
+
+# AI coding agents / skill managers (local tooling, not part of the template)
+.agent/
+.agents/
+.claude/
+.cursor/
+.aider*
+.copilot*

@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chart.fullname" . }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chart.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "chart.serviceAccountName" . }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+
+          # ── App / JVM config ──────────────────────────────
+          env:
+            - name: QUARKUS_PROFILE
+              value: {{ .Values.app.profile | quote }}
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage={{ .Values.app.jvmMaxRamPercentage }}"
+            {{- if .Values.oidc.enabled }}
+            - name: QUARKUS_OIDC_AUTH_SERVER_URL
+              value: {{ .Values.oidc.authServerUrl | quote }}
+            - name: QUARKUS_OIDC_CLIENT_ID
+              value: {{ .Values.oidc.clientId | quote }}
+            {{- if .Values.oidc.clientSecret }}
+            - name: QUARKUS_OIDC_CLIENT_SECRET
+              value: {{ .Values.oidc.clientSecret | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.tracing.enabled }}
+            - name: QUARKUS_OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.tracing.endpoint | quote }}
+            - name: QUARKUS_OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+            - name: QUARKUS_OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: QUARKUS_OTEL_TRACES_SAMPLER
+              value: {{ .Values.tracing.sampler | default "parentbased_traceidratio" | quote }}
+            {{- end }}
+            {{- if .Values.database.existingSecret }}
+            - name: QUARKUS_DATASOURCE_JDBC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | quote }}
+                  key: {{ .Values.database.existingSecretKey | default "jdbc-url" | quote }}
+            {{- else if .Values.postgresql.enabled }}
+            - name: QUARKUS_DATASOURCE_JDBC_URL
+              value: 'jdbc:postgresql://{{ .Release.Name }}-postgresql:5432/{{ .Values.postgresql.auth.database }}'
+            - name: QUARKUS_DATASOURCE_USERNAME
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              value: {{ .Values.postgresql.auth.password | quote }}
+            {{- end }}
+
+          # ── Resource limits (SRE Rule #1) ─────────────────
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # ── Health probes (SRE Rule #3) ───────────────────
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}

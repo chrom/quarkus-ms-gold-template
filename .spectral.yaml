@@ -1,0 +1,17 @@
+# Spectral — OpenAPI lint (style, tags, operationId, etc.)
+# https://stoplight.io/open-source/spectral
+# Run: make openapi-spectral
+extends: spectral:oas
+
+rules:
+  info-contact: warn
+  info-description: warn
+  operation-description: warn
+  operation-operationId: warn
+  operation-operationId-unique: error
+  operation-parameters: error
+  operation-tag-defined: warn
+  operation-tags: warn
+  path-params: error
+  contact-properties: off
+  tag-description: warn

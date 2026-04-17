@@ -1,0 +1,88 @@
+# Phase A (ADR 0008): committed OpenAPI must match prod codegen; PRs must not introduce
+# breaking API changes vs the merge-base without an intentional contract bump.
+name: OpenAPI contract
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '**.java'
+      - '**/openapi/**'
+      - 'pom.xml'
+      - 'src/main/resources/**'
+      - '.spectral.yaml'
+      - '.github/workflows/openapi-contract.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**.java'
+      - '**/openapi/**'
+      - 'pom.xml'
+      - 'src/main/resources/**'
+      - '.spectral.yaml'
+      - '.github/workflows/openapi-contract.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openapi-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Maven wrapper
+        run: chmod +x mvnw
+
+      - name: Sync check (committed spec == prod codegen)
+        run: |
+          set -euo pipefail
+          test -f openapi/openapi.yaml || { echo "::error::Missing openapi/openapi.yaml — run: make openapi-check-prod"; exit 1; }
+          cp openapi/openapi.yaml "${RUNNER_TEMP}/openapi-committed.yaml"
+          ./mvnw -B -DskipTests package -Dquarkus.profile=prod
+          if ! cmp -s "${RUNNER_TEMP}/openapi-committed.yaml" openapi/openapi.yaml; then
+            echo "::error::openapi/openapi.yaml is out of sync with SmallRye codegen. Run locally: make openapi-check-prod && git add openapi/"
+            diff -u "${RUNNER_TEMP}/openapi-committed.yaml" openapi/openapi.yaml | head -200 || true
+            exit 1
+          fi
+          echo "OK: committed OpenAPI matches prod profile build output."
+
+      - name: Spectral lint (prod OpenAPI)
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" -w /work \
+            stoplight/spectral@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab \
+            lint openapi/openapi.yaml --fail-severity error
+
+      - name: Breaking changes vs PR base (merge-base spec)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          if ! git cat-file -e "${BASE_SHA}:openapi/openapi.yaml" 2>/dev/null; then
+            echo "Base commit has no openapi/openapi.yaml — skipping breaking check."
+            exit 0
+          fi
+          git show "${BASE_SHA}:openapi/openapi.yaml" > "${RUNNER_TEMP}/openapi-base.yaml"
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/w" \
+            -v "${RUNNER_TEMP}:/b" \
+            tufin/oasdiff@sha256:c23e5048e30af47ddcc6b3f712e80cd10dfb9d8e73519fd5051d296a8a3276b5 \
+            breaking /b/openapi-base.yaml /w/openapi/openapi.yaml \
+            --format githubactions
+          echo "OK: no breaking OpenAPI changes vs merge base."

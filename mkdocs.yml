@@ -1,0 +1,17 @@
+site_name: Quarkus MS Gold Template
+
+docs_dir: docs
+
+nav:
+  - Home: index.md
+  - "ADR (architecture decisions)":
+      - "0001 — Gold template concept": adr/0001-gold-template-concept.md
+      - "0002 — SRE та production readiness": adr/0002-sre-production-readiness.md
+      - "0003 — Observability stack (Prometheus, Grafana, Loki, Jaeger)": adr/0003-observability-monitoring-stack.md
+      - "0004 — Health checks (liveness, readiness, Kubernetes)": adr/0004-health-checks.md
+      - "0005 — Database migrations (Flyway, Hibernate validate)": adr/0005-database-migrations.md
+      - "0006 — Logging and centralized logs (JSON, Loki, Alloy)": adr/0006-logging-centralized.md
+  - Architect practices: resume-architect-practices.md
+
+plugins:
+  - techdocs-core

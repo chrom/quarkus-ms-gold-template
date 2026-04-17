@@ -1,0 +1,26 @@
+# Grafana 11.6 + Prometheus 3.11 (deploy/docker-compose-metrics.yml).
+# Docs: https://grafana.com/docs/grafana/v11.6/datasources/prometheus/configure/
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      manageAlerts: true
+      allowAsRecordingRulesTarget: true
+      prometheusType: Prometheus
+      prometheusVersion: 3.11.0
+      # Must match deploy/monitoring/prometheus.yml global.scrape_interval (min step / resolution in UI).
+      timeInterval: 15s
+      # Exemplar label key must match the name used in /q/metrics exemplars when enabled (often trace_id or traceID).
+      # Verify: curl -s http://localhost:8080/q/metrics | rg exemplar
+      exemplarTraceIdDestinations:
+        - datasourceUid: jaeger
+          name: trace_id
+          urlDisplayLabel: View trace

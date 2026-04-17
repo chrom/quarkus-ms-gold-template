@@ -1,0 +1,2 @@
+-- File cleared because we now use StartupEvent + Datafaker
+-- for data generation (see org.acme.config.TestDataGenerator)

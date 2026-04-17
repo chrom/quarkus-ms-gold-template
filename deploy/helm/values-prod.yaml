@@ -1,0 +1,17 @@
+# Prod overrides for the Gold Template chart
+#
+# This file is intentionally strict: it avoids relying on placeholder defaults for production.
+# Provide these values via your platform pipeline (values-prod.yaml + SealedSecrets/ExternalSecrets).
+
+app:
+  profile: prod
+
+oidc:
+  enabled: true
+  authServerUrl: ""   # REQUIRED: QUARKUS_OIDC_AUTH_SERVER_URL
+  clientId: ""        # REQUIRED: QUARKUS_OIDC_CLIENT_ID
+
+# database:
+#   existingSecret: my-prod-db-secret
+#   existingSecretKey: jdbc-url
+

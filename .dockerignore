@@ -1,0 +1,8 @@
+# Ignore repo root by default (small Docker build context). Whitelist only Maven outputs.
+# Docker requires un-ignoring parent dirs before paths inside them.
+*
+!target/
+!target/*-runner
+!target/*-runner.jar
+!target/quarkus-app/
+!target/quarkus-app/**

@@ -1,0 +1,707 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "-- Grafana --"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "description": "**K8s dashboard:** Prometheus metrics + **Loki logs from Kubernetes** (namespace/container).\n\nSelect **namespace/job/instance** (Prometheus). Logs use the same **namespace** and chart **container** names (`quarkus-microservice`, `postgresql`).\n\nMetric details: `docs/observability/metrics-inventory.md`.",
+    "panels": [
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 20,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "smooth",
+                        "lineWidth": 2,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    },
+                    "unit": "Bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "editorMode": "code",
+                    "expr": "sum(rate(http_server_bytes_written_count{namespace=~\"$namespace\", job=~\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+                    "legendFormat": "bytes/s (written)",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "HTTP — bytes written / s (Vert.x)",
+            "description": "Total **HTTP response body** throughput (bytes/s) from the Vert.x stack. **Summed across all listener ports** — one series for how much traffic the app sends to clients.",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 15,
+                        "gradientMode": "opacity",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "smooth",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "Bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 0
+            },
+            "id": 2,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "editorMode": "code",
+                    "expr": "sum by (server_port) (rate(http_server_bytes_written_count{namespace=~\"$namespace\", job=~\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+                    "legendFormat": "port {{server_port}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "HTTP — bytes written by port (Vert.x)",
+            "description": "Same counter `http_server_bytes_written_count`, **split by `server_port`**. Shows throughput **per listener** (8080, management port, etc.). With a single listener you usually see one line; the left panel is the **sum across ports**.",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 25,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "smooth",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "bytes"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 8
+            },
+            "id": 3,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "editorMode": "code",
+                    "expr": "sum(jvm_memory_used_bytes{area=\"heap\", namespace=~\"$namespace\", job=~\"$job\", instance=~\"$instance\"}) by (id)",
+                    "legendFormat": "{{id}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "JVM — heap by regions",
+            "description": "**Heap** usage by memory region (`jvm_memory_used_bytes`, area=heap). Useful for GC tuning and heap-level leaks.",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 20,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "smooth",
+                        "lineWidth": 2,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "max": 1,
+                    "min": 0,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 8
+            },
+            "id": 4,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "editorMode": "code",
+                    "expr": "process_cpu_usage{namespace=~\"$namespace\", job=~\"$job\", instance=~\"$instance\"}",
+                    "legendFormat": "process CPU",
+                    "range": true,
+                    "refId": "A"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "prometheus"
+                    },
+                    "editorMode": "code",
+                    "expr": "system_cpu_usage{namespace=~\"$namespace\", job=~\"$job\", instance=~\"$instance\"}",
+                    "legendFormat": "system CPU",
+                    "hide": false,
+                    "range": true,
+                    "refId": "B"
+                }
+            ],
+            "title": "CPU (process / system)",
+            "description": "**process_cpu_usage** — JVM process CPU share; **system_cpu_usage** — OS/container/host CPU. Compare to see whether the app or other workloads dominate CPU.",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 15,
+                        "lineWidth": 2,
+                        "showPoints": "never",
+                        "spanNulls": false
+                    },
+                    "unit": "reqps"
+                },
+                "overrides": []
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+            "id": 7,
+            "options": {
+                "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true},
+                "tooltip": {"mode": "multi"}
+            },
+            "targets": [
+                {
+                    "datasource": {"type": "prometheus", "uid": "prometheus"},
+                    "editorMode": "code",
+                    "expr": "sum(rate(http_server_requests_seconds_count{namespace=~\"$namespace\", job=~\"$job\", instance=~\"$instance\"}[$__rate_interval]))",
+                    "legendFormat": "req/s",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "HTTP — request rate (Micrometer SLI)",
+            "description": "Product SLI: **HTTP requests per second** from Micrometer (`http_server_requests_seconds_count`, rate). Use with logs/traces for availability and load SLOs.",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 15,
+                        "lineWidth": 2,
+                        "showPoints": "never"
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+            "id": 8,
+            "options": {
+                "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true},
+                "tooltip": {"mode": "multi"}
+            },
+            "targets": [
+                {
+                    "datasource": {"type": "prometheus", "uid": "prometheus"},
+                    "editorMode": "code",
+                    "expr": "http_server_active_connections{namespace=~\"$namespace\", job=~\"$job\", instance=~\"$instance\"}",
+                    "legendFormat": "port {{server_port}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "HTTP — active connections (Vert.x stack)",
+            "description": "Active **connections** at the Vert.x layer (`http_server_active_connections`), by `server_port`. Shows concurrent client connections under load.",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {"mode": "palette-classic"},
+                    "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 15,
+                        "lineWidth": 2,
+                        "showPoints": "never"
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
+            "id": 9,
+            "options": {
+                "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true},
+                "tooltip": {"mode": "multi"}
+            },
+            "targets": [
+                {
+                    "datasource": {"type": "prometheus", "uid": "prometheus"},
+                    "editorMode": "code",
+                    "expr": "netty_allocator_pooled_arenas{namespace=~\"$namespace\", job=~\"$job\", instance=~\"$instance\"}",
+                    "legendFormat": "{{name}} / {{memory_type}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Netty — pooled arenas",
+            "description": "**Netty** metrics (`netty_allocator_pooled_arenas`): buffer pools. Helps diagnose memory pressure and the network stack under many connections.",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "loki",
+                "uid": "loki"
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 24
+            },
+            "id": 5,
+            "options": {
+                "dedupStrategy": "none",
+                "enableLogDetails": true,
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showLabels": true,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "wrapLogMessage": true
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "loki"
+                    },
+                    "editorMode": "code",
+                    "expr": "{namespace=~\"$namespace\", pod=~\".*quarkus-microservice.*\"} |~ \"^\\\\{\" | json | line_format \"[{{.level}}] {{.message}} [trace: {{.mdc.traceId}}]\"",
+                    "queryType": "range",
+                    "refId": "A"
+                }
+            ],
+            "title": "K8s Logs: Quarkus (JSON)",
+            "description": "Pod logs for Quarkus pod in `$namespace`. This Loki setup labels streams with `namespace` and `pod` (not `container`). If empty, verify Loki scrape + time range.",
+            "type": "logs"
+        },
+        {
+            "datasource": {
+                "type": "loki",
+                "uid": "loki"
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 24
+            },
+            "id": 6,
+            "options": {
+                "dedupStrategy": "none",
+                "enableLogDetails": true,
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showLabels": true,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "wrapLogMessage": true
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "loki"
+                    },
+                    "editorMode": "code",
+                    "expr": "{namespace=~\"$namespace\", pod=~\".*postgresql.*\"}",
+                    "queryType": "range",
+                    "refId": "A"
+                }
+            ],
+            "title": "K8s Logs: PostgreSQL (raw)",
+            "description": "PostgreSQL pod logs in `$namespace` (only if subchart enabled). Raw DB logs for correlation.",
+            "type": "logs"
+        }
+    ],
+    "refresh": "10s",
+    "schemaVersion": 39,
+    "tags": [
+        "quarkus",
+        "micrometer",
+        "demo"
+    ],
+    "templating": {
+        "list": [
+            {
+                "current": {
+                    "selected": true,
+                    "text": "default",
+                    "value": "default"
+                },
+                "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                },
+                "definition": "label_values(up, namespace)",
+                "hide": 0,
+                "includeAll": false,
+                "multi": false,
+                "name": "namespace",
+                "options": [],
+                "query": {
+                    "query": "label_values(up, namespace)",
+                    "refId": "StandardVariableQuery"
+                },
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "current": {
+                    "selected": true,
+                    "text": "quarkus-ms-gold-template-quarkus-microservice",
+                    "value": "quarkus-ms-gold-template-quarkus-microservice"
+                },
+                "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                },
+                "definition": "label_values(http_server_requests_seconds_count{namespace=~\"$namespace\"}, job)",
+                "hide": 0,
+                "includeAll": false,
+                "multi": false,
+                "name": "job",
+                "options": [],
+                "query": {
+                    "query": "label_values(http_server_requests_seconds_count{namespace=~\"$namespace\"}, job)",
+                    "refId": "StandardVariableQuery"
+                },
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "current": {
+                    "selected": true,
+                    "text": [
+                        "All"
+                    ],
+                    "value": [
+                        "$__all"
+                    ]
+                },
+                "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                },
+                "definition": "label_values(http_server_requests_seconds_count{namespace=~\"$namespace\", job=~\"$job\"}, instance)",
+                "hide": 0,
+                "includeAll": true,
+                "multi": true,
+                "name": "instance",
+                "options": [],
+                "query": {
+                    "query": "label_values(http_server_requests_seconds_count{namespace=~\"$namespace\", job=~\"$job\"}, instance)",
+                    "refId": "StandardVariableQuery"
+                },
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 0,
+                "type": "query"
+            }
+        ]
+    },
+    "time": {
+        "from": "now-1h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "browser",
+    "title": "Quarkus Cloud Template — Overview",
+    "uid": "quarkus-ms-gold-template-overview",
+    "version": 8,
+    "weekStart": ""
+}

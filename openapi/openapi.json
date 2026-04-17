@@ -1,0 +1,525 @@
+{
+  "openapi" : "3.1.0",
+  "components" : {
+    "schemas" : {
+      "Category" : {
+        "description" : "Product category",
+        "type" : "object",
+        "required" : [ "id", "name" ],
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64",
+            "examples" : [ 1 ]
+          },
+          "name" : {
+            "type" : "string",
+            "examples" : [ "Electronics" ]
+          }
+        }
+      },
+      "MeResponse" : {
+        "description" : "Resolved identity from the OIDC access token",
+        "type" : "object",
+        "properties" : {
+          "subject" : {
+            "type" : "string"
+          },
+          "roles" : {
+            "type" : "array",
+            "uniqueItems" : true,
+            "items" : {
+              "type" : "string"
+            }
+          }
+        }
+      },
+      "PagedResponse" : {
+        "description" : "Paged response: page data and metadata",
+        "type" : "object",
+        "properties" : {
+          "data" : {
+            "type" : "array",
+            "items" : { },
+            "description" : "Items of the current page"
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Total number of pages"
+          },
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Total number of elements"
+          },
+          "currentPage" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Current page number (0-based)"
+          }
+        }
+      },
+      "PingResponse" : {
+        "type" : "object",
+        "properties" : {
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "Product" : {
+        "description" : "Product in the catalog",
+        "type" : "object",
+        "required" : [ "id", "name", "price" ],
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "format" : "int64",
+            "examples" : [ 1 ]
+          },
+          "name" : {
+            "type" : "string",
+            "examples" : [ "Coffee" ]
+          },
+          "price" : {
+            "type" : "number",
+            "format" : "double",
+            "examples" : [ 12.50 ]
+          },
+          "categoryId" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "Category id if set"
+          }
+        }
+      },
+      "ProductRequest" : {
+        "description" : "Fields for creating and updating a product",
+        "type" : "object",
+        "required" : [ "name", "price" ],
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "description" : "Name",
+            "examples" : [ "Laptop" ],
+            "pattern" : "\\S"
+          },
+          "price" : {
+            "type" : "number",
+            "format" : "double",
+            "description" : "Price ≥ 0",
+            "examples" : [ 999.99 ],
+            "minimum" : 0
+          },
+          "categoryId" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int64",
+            "description" : "Optional category link"
+          }
+        }
+      }
+    },
+    "securitySchemes" : {
+      "SecurityScheme" : {
+        "type" : "openIdConnect",
+        "description" : "Authentication"
+      }
+    }
+  },
+  "tags" : [ {
+    "name" : "Categories",
+    "description" : "Product categories (read)"
+  }, {
+    "name" : "Products",
+    "description" : "CRUD and recommendations for products"
+  }, {
+    "name" : "Config",
+    "description" : "Non-secret configuration and diagnostics (no secrets)."
+  }, {
+    "name" : "Greeting",
+    "description" : "Plain-text hello and goodbye endpoints."
+  }, {
+    "name" : "Admin",
+    "description" : "Authorization example (role-protected endpoint)."
+  } ],
+  "paths" : {
+    "/api/admin/ping" : {
+      "get" : {
+        "summary" : "Admin ping",
+        "description" : "Requires role 'admin'.",
+        "operationId" : "adminPing",
+        "tags" : [ "Admin" ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PingResponse"
+                }
+              }
+            }
+          },
+          "401" : {
+            "description" : "Unauthenticated"
+          },
+          "403" : {
+            "description" : "Forbidden (missing role)"
+          }
+        },
+        "security" : [ {
+          "oidc-jwt" : [ ]
+        } ]
+      }
+    },
+    "/bye" : {
+      "get" : {
+        "summary" : "Goodbye message",
+        "description" : "Returns a fixed goodbye string (demo endpoint).",
+        "operationId" : "getBye",
+        "tags" : [ "Greeting" ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories" : {
+      "get" : {
+        "summary" : "List categories",
+        "description" : "Returns all product categories sorted by name.",
+        "operationId" : "listCategories",
+        "tags" : [ "Categories" ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Category"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories/{id}" : {
+      "get" : {
+        "summary" : "Category by id",
+        "description" : "Returns a single category by numeric id, or 404 if not found.",
+        "operationId" : "getCategoryById",
+        "tags" : [ "Categories" ],
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Found",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Category"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Not found"
+          }
+        }
+      }
+    },
+    "/config/greeting-message" : {
+      "get" : {
+        "summary" : "Configured greeting text",
+        "description" : "Returns the raw `greeting.message` value as plain text.",
+        "operationId" : "getGreetingMessage",
+        "tags" : [ "Config" ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/public" : {
+      "get" : {
+        "summary" : "Public configuration slice",
+        "description" : "Returns a JSON map of safe, non-secret settings (ports, app name, feature flags). Do not add secrets to this response.",
+        "operationId" : "getPublicConfig",
+        "tags" : [ "Config" ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "object",
+                  "additionalProperties" : { }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hello" : {
+      "get" : {
+        "summary" : "Greeting message",
+        "description" : "Returns the configured greeting string (see `greeting.message`).",
+        "operationId" : "getHello",
+        "tags" : [ "Greeting" ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "text/plain" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products" : {
+      "get" : {
+        "summary" : "Product list",
+        "description" : "Paginated list with totalPages, totalElements, currentPage, and data items.",
+        "operationId" : "listProducts",
+        "tags" : [ "Products" ],
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PagedResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "summary" : "Create product",
+        "description" : "Creates a new product; returns 201 with Location and body, or validation/category errors.",
+        "operationId" : "createProduct",
+        "tags" : [ "Products" ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ProductRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Created",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Validation error"
+          },
+          "404" : {
+            "description" : "Category not found (if categoryId provided)"
+          }
+        }
+      }
+    },
+    "/products/{id}" : {
+      "put" : {
+        "summary" : "Update product",
+        "description" : "Replaces fields of an existing product; 404 if product or category missing.",
+        "operationId" : "updateProduct",
+        "tags" : [ "Products" ],
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ProductRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Updated",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Validation error"
+          },
+          "404" : {
+            "description" : "Product or category not found"
+          }
+        }
+      },
+      "get" : {
+        "summary" : "Product by id",
+        "description" : "Returns one product by id, or 404 if not found.",
+        "operationId" : "getProductById",
+        "tags" : [ "Products" ],
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Found",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Not found"
+          }
+        }
+      },
+      "delete" : {
+        "summary" : "Delete product",
+        "description" : "Deletes a product by id; 204 on success, 404 if not found.",
+        "operationId" : "deleteProduct",
+        "tags" : [ "Products" ],
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Deleted"
+          },
+          "404" : {
+            "description" : "Not found"
+          }
+        }
+      }
+    },
+    "/products/{id}/recommendations" : {
+      "get" : {
+        "summary" : "Product recommendations",
+        "description" : "Returns recommendation payload for a product; fault tolerance (delay) may apply.",
+        "operationId" : "getProductRecommendations",
+        "tags" : [ "Products" ],
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : { }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Not found"
+          }
+        }
+      }
+    }
+  },
+  "info" : {
+    "title" : "Quarkus MS Gold Template API",
+    "version" : "1.0.0-SNAPSHOT",
+    "description" : "Reference REST API for the Gold Template: diagnostics, configuration endpoints, and the catalog bounded context (products and categories).",
+    "contact" : {
+      "name" : "Platform / template maintainers",
+      "email" : "platform@example.com"
+    }
+  },
+  "servers" : [ {
+    "url" : "http://localhost:8080",
+    "description" : "Auto generated value"
+  }, {
+    "url" : "http://0.0.0.0:8080",
+    "description" : "Auto generated value"
+  } ]
+}

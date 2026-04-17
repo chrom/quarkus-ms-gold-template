@@ -1,0 +1,110 @@
+# Observability stack only (no Quarkus app and no separate DB).
+# Run application: make up-prod or ./mvnw quarkus:dev (see Makefile).
+# Paths relative to this file (deploy/).
+services:
+  # Our metrics collector
+  prometheus:
+    image: prom/prometheus:v3.11.0 # ✅ Locked version — no surprises upon updates
+    container_name: metrics-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus # ✅ Store collected data across restarts
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Linux hack: see host's localhost
+    restart: unless-stopped
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
+
+  # Our visualizer
+  grafana:
+    image: grafana/grafana:11.6.14 # ✅ Locked version
+    container_name: metrics-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # For local monitoring — OK
+      - GF_USERS_ALLOW_SIGN_UP=false # ✅ Disable third-party registration
+      - GF_SERVER_ROOT_URL=http://localhost:3000/
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      # Trace → metrics (Jaeger datasource): https://grafana.com/docs/grafana/v11.6/datasources/jaeger/
+      - GF_FEATURE_TOGGLES_ENABLE=traceToMetrics
+    volumes:
+      - grafana_data:/var/lib/grafana # ✅ UI status / stars / local changes (provisioned — from repo)
+      - ../grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger
+    restart: unless-stopped
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
+
+  # Logs: Alloy (collector) → Loki; Promtail EOL — using Alloy.
+  loki:
+    image: grafana/loki:3.7.1
+    container_name: metrics-loki
+    command: -config.file=/etc/loki/config.yaml
+    volumes:
+      - ./monitoring/loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
+
+  alloy:
+    image: grafana/alloy:v1.15.0
+    container_name: metrics-alloy
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ../grafana/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    ports:
+      - "12345:12345"
+    depends_on:
+      - loki
+    restart: unless-stopped
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
+
+  # Traces: OTLP → Jaeger UI (all-in-one)
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    container_name: metrics-jaeger
+    environment:
+      # Explicitly enable OTLP ingestion (already true in most images, but safer this way)
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317" # OTLP gRPC (Quarkus default with protocol=grpc)
+      - "4318:4318" # OTLP HTTP/protobuf (if quarkus.otel.exporter.otlp.protocol=http/protobuf)
+    restart: unless-stopped
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
+
+volumes:
+  prometheus_data: # ✅ Prometheus data across restarts
+  grafana_data: # ✅ Grafana data across restarts
+  loki_data: # Loki chunks / index
+  alloy_data: # Alloy tail positions

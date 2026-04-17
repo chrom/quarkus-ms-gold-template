@@ -1,0 +1,35 @@
+# Grafana 11.6 — Jaeger + Loki + Prometheus UIDs must match loki.yaml / prometheus.yaml.
+# Docs: https://grafana.com/docs/grafana/v11.6/datasources/jaeger/
+# traceToMetrics: enable GF_FEATURE_TOGGLES_ENABLE=traceToMetrics in deploy/docker-compose-metrics.yml.
+apiVersion: 1
+
+datasources:
+  - name: Jaeger
+    uid: jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: true
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: 2m
+        spanEndTimeShift: 2m
+        tags:
+          - service.name
+        filterByTraceID: true
+        filterBySpanID: false
+      # Map OTel service.name to Prometheus label "job" (same value as scrape job_name).
+      # Queries use $__tags per official provisioning example (escape $$ in YAML → $__tags in Grafana).
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: 5m
+        spanEndTimeShift: 5m
+        tags:
+          - key: service.name
+            value: job
+        queries:
+          - name: HTTP request rate (Micrometer SLI)
+            query: 'sum(rate(http_server_requests_seconds_count{$$__tags}[5m]))'
+          - name: HTTP bytes written / s (transport)
+            query: 'sum(rate(http_server_bytes_written_count{$$__tags}[5m]))'

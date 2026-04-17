@@ -1,0 +1,51 @@
+# Stage overrides for the Gold Template chart
+app:
+  profile: stage
+
+oidc:
+  enabled: true
+  authServerUrl: "http://keycloak.keycloak.svc.cluster.local:8180/realms/gold-dev"
+  clientId: "quarkus-ms-gold-template-api"
+
+# Stage overrides for Gold Template Helm chart
+# Usage: helm install ... -f deploy/helm/values-stage.yaml
+#
+# Only override what DIFFERS from values.yaml defaults.
+
+image:
+  repository: ghcr.io/your-org/quarkus-ms-gold-template   # override when cloning template
+  # tag: set by CI: --set image.tag=$GIT_SHA
+
+replicaCount: 2   # minimum 2 for HA
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+ingress:
+  enabled: true
+  className: "traefik"          # or "nginx" depending on cluster ingress controller
+  host: "my-service.stage.example.com"   # override per service
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "768Mi"
+    cpu: "1500m"
+
+oidc:
+  enabled: true
+  authServerUrl: "https://keycloak.stage.example.com/realms/gold-stage"
+  clientId: "quarkus-ms-gold-template-api"   # override per service
+
+tracing:
+  enabled: true
+  endpoint: "http://tempo.monitoring.svc.cluster.local:4317"
+
+keycloak:
+  registration:
+    enabled: false   # Phase 2: set to true when adminSecretRef is provisioned

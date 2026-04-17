@@ -1,0 +1,59 @@
+# Prod stack: PostgreSQL + native Quarkus backend.
+# Paths are relative to this file (deploy/). Repo root is `..` for build context and .env.prod.
+services:
+  # 1. Full PostgreSQL database for Production
+  pg-database:
+    image: postgres:18-alpine
+    container_name: quarkus_prod_db
+    env_file:
+      - ../.env.prod
+    healthcheck:
+      # Use specific values instead of ${variables} to avoid WARN
+      test: ["CMD-SHELL", "pg_isready -U prod_user -d prod_database"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    # PG 18+ images: one mount on /var/lib/postgresql (not .../data). After updating from 17: make clean-prod.
+    volumes:
+      - pg_data:/var/lib/postgresql
+    networks:
+      - quarkus-net
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
+
+  # 2. Our built Native microservice
+  backend-service:
+    build:
+      context: ..
+      dockerfile: src/main/docker/Dockerfile.native-micro
+    container_name: quarkus_prod_backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - ../.env.prod                        # ✅ Quarkus reads environment variables from this file
+    # OTLP: inside the container 127.0.0.1 ≠ host. Jaeger from deploy/docker-compose-metrics.yml
+    # publishes 4317 on host — reachable via host.docker.internal (Linux: host-gateway).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      QUARKUS_OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4317
+      QUARKUS_OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    depends_on:
+      pg-database:
+        condition: service_healthy       # Start only when DB is ready
+    networks:
+      - quarkus-net
+    restart: unless-stopped             # ✅ Automatic restart on failure (Factor IX)
+    logging:
+      driver: journald
+      options:
+        tag: "{{.Name}}"
+
+networks:
+  quarkus-net:
+    driver: bridge
+
+volumes:
+  pg_data:                               # ✅ Named volume — data is preserved across restarts
