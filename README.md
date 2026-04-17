@@ -139,6 +139,63 @@ Platform bootstrap (Keycloak/OIDC, compose, realm) lives in a **sibling director
 
 ---
 
+## ✅ Post-setup checklist (after cloning this template)
+
+This template ships with a fully-wired CI pipeline but intentionally leaves a few integration points as **explicit opt-ins**. Work through this checklist the first time you clone the template into a new service:
+
+### 1. Container registry
+
+Image publishing in [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) and [`.github/workflows/release.yaml`](.github/workflows/release.yaml) is currently a **dry run** — images are built and scanned locally in the runner but not pushed. Search for `TODO(registry):` markers and enable push once the target registry is chosen.
+
+Steps:
+
+1. Decide on the registry (ghcr.io recommended for GitHub-hosted repos; Harbor/ECR/GitLab also supported).
+2. Create credentials and store as repository/organisation secrets:
+   - `REGISTRY_USERNAME` (or rely on `GITHUB_TOKEN` for ghcr.io).
+   - `REGISTRY_PASSWORD` / `REGISTRY_TOKEN`.
+3. In `ci.yaml` and `release.yaml`, replace `push: false` with `push: true` and add the registry prefix to `tags:`.
+4. Add a `docker/login-action@v3` step before each build.
+
+### 2. SonarQube analysis
+
+The `sonar` job in `ci.yaml` is **conditional on `vars.SONAR_HOST_URL`** — it skips silently until the variable is defined. Quality Gate outcome becomes part of `ci-passed` once enabled.
+
+Steps:
+
+1. Provision the SonarQube server (see [`docs/infra/sonarqube-setup.md`](docs/infra/sonarqube-setup.md) for the `infra-bootstrap` Helm chart and ArgoCD wiring).
+2. In SonarQube UI: create project `quarkus-ms-gold-template`, generate an analysis token.
+3. In GitHub repository settings:
+   - Add variable: `SONAR_HOST_URL` = e.g. `https://sonar.internal.example.com`.
+   - Add secret: `SONAR_TOKEN` = the analysis token.
+4. Push any commit — the `sonar` job activates automatically.
+
+Tune coverage thresholds and exclusions in [`sonar-project.properties`](sonar-project.properties).
+
+### 3. Dependabot
+
+[`.github/dependabot.yml`](.github/dependabot.yml) watches Maven, GitHub Actions, and Docker base images. It needs **no extra configuration** — GitHub enables it automatically once the file is committed. PRs arrive weekly (grouped by ecosystem to reduce noise) and security updates bypass the schedule.
+
+### 4. Branch protection
+
+Point the required status check at the **aggregation job** `ci-passed` (not individual child jobs). This keeps branch protection stable as the pipeline evolves:
+
+- Settings → Branches → Branch protection rules → `main`.
+- Require status checks: `ci-passed`, `contract` (from `openapi-contract.yml`).
+- Require branches to be up to date before merging.
+
+### 5. Supply-chain artefacts
+
+Every successful build on `main` produces a **CycloneDX SBOM** (`target/bom.json` + `bom.xml`). Release tags attach the SBOM to the GitHub Release page alongside the native runner binary and the native container tarball.
+
+To verify artefacts locally:
+
+```bash
+./mvnw -ntp package                  # generates target/bom.json + bom.xml
+jq '.components | length' target/bom.json
+```
+
+---
+
 ## 🎓 Internal Education
 
 The documentation includes a deep-dive **Quarkus Course** (Ukrainian) for Senior/Middle developers:

@@ -1,0 +1,299 @@
+# App-CI for the Quarkus gold-template microservice.
+#
+# Scope:
+#   - Unit + integration tests (JVM mode) with JaCoCo coverage.
+#   - ArchUnit domain invariants (run as part of `mvn verify`).
+#   - JVM container image build (no push yet — see TODO(registry) below).
+#   - Trivy image scan (SARIF uploaded to GitHub Security tab).
+#   - CycloneDX SBOM uploaded as a build artefact.
+#   - SonarQube analysis (conditional — runs only when SONAR_HOST_URL variable is set).
+#   - Aggregation `ci-passed` gate for branch-protection.
+#
+# Out of scope (handled elsewhere):
+#   - OpenAPI contract (sync + Spectral + oasdiff): `.github/workflows/openapi-contract.yml`.
+#   - Native image build: `.github/workflows/release.yaml` (runs on tags only — native is 10–15 min).
+#   - Infra/manifest validation: lives in `infra-bootstrap` (helm lint, kubeconform, conftest).
+#
+# TODO(reusable-workflow):
+#   When a second service joins the platform, extract `test`, `build-image`, `scan-image`, `sonar`
+#   into `infra-bootstrap/.github/workflows/reusable-java-ms-ci.yaml` and replace the job bodies
+#   here with `uses: <org>/infra-bootstrap/.github/workflows/reusable-java-ms-ci.yaml@v1`.
+#
+# TODO(registry):
+#   Image push is intentionally disabled. When the first deploy target is chosen (ghcr.io, Harbor,
+#   ECR, …) re-enable the `push: true` flag in `build-image` and set REGISTRY / credentials.
+
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # Needed for Trivy SARIF upload to the Security tab.
+  security-events: write
+  # Needed for actions/upload-artifact.
+  actions: read
+
+env:
+  JAVA_VERSION: '25'
+  JAVA_DISTRIBUTION: 'temurin'
+  # Local image name only — no registry prefix until TODO(registry) is resolved.
+  IMAGE_NAME: 'quarkus-ms-gold-template'
+  IMAGE_TAG: 'ci-${{ github.sha }}'
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 1: unit + integration tests, ArchUnit, JaCoCo.
+  # Also emits the CycloneDX SBOM (produced by cyclonedx-maven-plugin at `package`).
+  # ─────────────────────────────────────────────────────────────────────────
+  test:
+    name: test + coverage + sbom
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Sonar needs full history for new-code detection (blame-based).
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Maven wrapper permissions
+        run: chmod +x mvnw
+
+      # `verify` runs: compile → test (surefire) → integration-test (failsafe) → jacoco report → cyclonedx bom.
+      # `-DskipITs=false` enables the failsafe-bound integration tests explicitly; the pom defaults to true.
+      - name: Build, test, generate coverage + SBOM
+        run: ./mvnw -B -ntp verify -DskipITs=false
+
+      - name: Upload JaCoCo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: |
+            target/site/jacoco/
+            target/site/jacoco-it/
+          retention-days: 14
+
+      - name: Upload CycloneDX SBOM
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: |
+            target/bom.json
+            target/bom.xml
+          retention-days: 90
+
+      - name: Upload test reports (for debug on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          retention-days: 7
+
+      # Cache Maven build output for downstream jobs (image build reuses target/quarkus-app).
+      - name: Cache Quarkus build output
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            target/quarkus-app
+            target/*.jar
+            target/bom.json
+            target/bom.xml
+          key: quarkus-build-${{ github.sha }}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 2: build JVM container image. No push (TODO(registry)).
+  # Uses the Quarkus-provided Dockerfile.jvm which expects target/quarkus-app/ to exist.
+  # ─────────────────────────────────────────────────────────────────────────
+  build-image:
+    name: build jvm image
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-ref: ${{ steps.meta.outputs.image-ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore Quarkus build output
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/quarkus-app
+            target/*.jar
+            target/bom.json
+            target/bom.xml
+          key: quarkus-build-${{ github.sha }}
+          fail-on-cache-miss: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute image reference
+        id: meta
+        run: |
+          IMAGE_REF="${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "image-ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_REF=${IMAGE_REF}" >> "$GITHUB_ENV"
+
+      # Local build only. We load the image into the runner's docker daemon
+      # so the next job (trivy) can scan it by tag without a registry round-trip.
+      - name: Build JVM image (local load)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/main/docker/Dockerfile.jvm
+          tags: ${{ env.IMAGE_REF }}
+          load: true
+          push: false
+          # TODO(registry): add `push: true`, registry tags, and labels (org.opencontainers.image.*) once target registry is chosen.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Persist the image as an artefact so the scan job can load it.
+      - name: Export image tarball
+        run: |
+          docker save "$IMAGE_REF" | gzip > /tmp/image.tar.gz
+          ls -lh /tmp/image.tar.gz
+
+      - name: Upload image tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/image.tar.gz
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 3: Trivy CVE scan on the JVM image. SARIF uploaded to Security tab.
+  # Fails the build on HIGH/CRITICAL with fixes available.
+  # ─────────────────────────────────────────────────────────────────────────
+  scan-image:
+    name: trivy image scan
+    runs-on: ubuntu-latest
+    needs: build-image
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download image tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/
+
+      - name: Load image
+        run: |
+          gunzip -c /tmp/image.tar.gz | docker load
+          docker images
+
+      # Two-pass strategy:
+      #   1) SARIF report (severity-agnostic) for the Security tab — always uploaded.
+      #   2) Table report (HIGH/CRITICAL, fix-available only) — used as the PR gate.
+      - name: Trivy scan — SARIF for Security tab
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ needs.build-image.outputs.image-ref }}
+          format: sarif
+          output: trivy-results.sarif
+          ignore-unfixed: false
+          # TRIVY_DB_REPOSITORY overrides for air-gapped runners are supported via env — noted here, not applied yet.
+          vuln-type: 'os,library'
+          scanners: 'vuln,secret,misconfig'
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image
+
+      - name: Trivy scan — fail on fixable HIGH/CRITICAL
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ needs.build-image.outputs.image-ref }}
+          format: table
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '1'
+          vuln-type: 'os,library'
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 4: SonarQube analysis. Conditional on SONAR_HOST_URL being configured.
+  # Skipped automatically until the self-hosted server is reachable.
+  # ─────────────────────────────────────────────────────────────────────────
+  sonar:
+    name: sonarqube
+    runs-on: ubuntu-latest
+    needs: test
+    # `vars.SONAR_HOST_URL` is a repository/organisation variable (non-secret).
+    # If unset → skip; the `ci-passed` gate treats skipped jobs as success.
+    if: ${{ vars.SONAR_HOST_URL != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # SonarQube needs full git history for new-code detection via blame.
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Maven wrapper permissions
+        run: chmod +x mvnw
+
+      # Re-run verify to produce coverage + compiled classes on this runner
+      # (download-artifact of target/ from the test job is slower and more brittle).
+      - name: Build + coverage
+        run: ./mvnw -B -ntp verify -DskipITs=false
+
+      - name: SonarQube scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        run: |
+          ./mvnw -B -ntp sonar:sonar \
+            -Dsonar.host.url="${SONAR_HOST_URL}" \
+            -Dsonar.token="${SONAR_TOKEN}" \
+            -Dsonar.qualitygate.wait=true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Aggregation gate. Point branch-protection's required check at this single
+  # job name — avoids reconfiguring protection every time a job is added/renamed.
+  # Skipped jobs (e.g. sonar when SONAR_HOST_URL is unset) count as success.
+  # ─────────────────────────────────────────────────────────────────────────
+  ci-passed:
+    name: ci-passed
+    runs-on: ubuntu-latest
+    needs: [test, build-image, scan-image, sonar]
+    if: always()
+    steps:
+      - name: Fail if any dependency failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "One or more upstream jobs failed or were cancelled."
+          exit 1
+      - run: echo "All required checks passed."

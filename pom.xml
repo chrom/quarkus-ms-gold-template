@@ -17,6 +17,10 @@
         <quarkus.platform.version>3.34.2</quarkus.platform.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.5</surefire-plugin.version>
+        <!-- Supply-chain tooling. Keep pinned; these plugins participate in every PR build. -->
+        <!-- jacoco 0.8.14+ required for Java 25 class-file support (major 69). -->
+        <jacoco-plugin.version>0.8.14</jacoco-plugin.version>
+        <cyclonedx-plugin.version>2.9.1</cyclonedx-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -172,6 +176,77 @@
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
+            <!--
+              JaCoCo coverage agent. Wires into `@{argLine}` of surefire/failsafe so every test
+              run emits exec data; `report` binds to `verify` and produces HTML + XML under
+              target/site/jacoco/. SonarQube ingests the XML via sonar.coverage.jacoco.xmlReportPaths.
+              Native profile skips coverage (no JVM bytecode at test time).
+            -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>jacoco-prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>jacoco-prepare-agent-integration</id>
+                        <goals>
+                            <goal>prepare-agent-integration</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>jacoco-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
+              CycloneDX SBOM (CVE/audit provenance). `makeAggregateBom` runs at `package`
+              and emits target/bom.json + target/bom.xml from the real Maven dependency
+              graph (more accurate than container-image scans for Java libs). Attached to
+              every release artefact; referenced by scripts/CI for supply-chain checks.
+            -->
+            <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>${cyclonedx-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>cyclonedx-sbom</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>makeAggregateBom</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!--
+                      By default cyclonedx-maven-plugin skips modules whose maven-deploy-plugin
+                      skip flag is true. Quarkus `packaging=quarkus` modules trip that heuristic,
+                      so opt out explicitly — we always want the SBOM emitted on package.
+                    -->
+                    <skipNotDeployed>false</skipNotDeployed>
+                    <outputFormat>all</outputFormat>
+                    <outputName>bom</outputName>
+                    <includeBomSerialNumber>true</includeBomSerialNumber>
+                    <includeCompileScope>true</includeCompileScope>
+                    <includeProvidedScope>true</includeProvidedScope>
+                    <includeRuntimeScope>true</includeRuntimeScope>
+                    <includeSystemScope>true</includeSystemScope>
+                    <includeTestScope>false</includeTestScope>
+                    <includeLicenseText>false</includeLicenseText>
+                    <projectType>application</projectType>
+                    <schemaVersion>1.5</schemaVersion>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 
@@ -187,6 +262,8 @@
                 <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
                 <skipITs>false</skipITs>
                 <quarkus.native.enabled>true</quarkus.native.enabled>
+                <!-- JaCoCo agent cannot attach to native-image runtime; skip coverage on native builds. -->
+                <jacoco.skip>true</jacoco.skip>
             </properties>
         </profile>
     </profiles>

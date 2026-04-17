@@ -1,0 +1,138 @@
+# Release pipeline: native-image build + image + artefacts.
+#
+# Triggered exclusively by semver tag push (v1.2.3) or manual dispatch.
+# Native builds are expensive (10–15 min on GitHub-hosted runners); keep them off the PR path.
+#
+# Artefacts attached to the GitHub Release:
+#   - *-runner binary (Linux x86_64) — for bare-metal or custom base-image use.
+#   - target/bom.json + target/bom.xml (CycloneDX SBOM).
+#   - Native container image tagged with the release tag and :latest-native.
+#
+# TODO(registry):
+#   Registry push is currently a DRY RUN (docker save only). Enable `push: true` and add
+#   REGISTRY / credentials once the target registry is finalised.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0) — used when dispatched manually'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  security-events: write
+  actions: read
+
+env:
+  JAVA_VERSION: '25'
+  JAVA_DISTRIBUTION: 'temurin'
+  IMAGE_NAME: 'quarkus-ms-gold-template'
+
+jobs:
+  native:
+    name: native-image build + scan + release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            RELEASE_TAG="${{ inputs.tag }}"
+          else
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "value=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Release tag resolved to: ${RELEASE_TAG}"
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Maven wrapper permissions
+        run: chmod +x mvnw
+
+      # Quarkus can drive the native build in a container (no local GraalVM required).
+      # -Dquarkus.native.container-build=true picks the bundled mandrel builder image.
+      - name: Native build
+        run: |
+          ./mvnw -B -ntp package -Pnative \
+            -Dquarkus.native.container-build=true \
+            -DskipITs=false
+
+      - name: Collect native artefacts
+        run: |
+          mkdir -p release-artifacts
+          cp target/*-runner                release-artifacts/ || true
+          cp target/bom.json target/bom.xml release-artifacts/ || true
+          ls -lh release-artifacts/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Local build only. Registry push is deliberately gated (see TODO(registry) above).
+      - name: Build native container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/main/docker/Dockerfile.native-micro
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+            ${{ env.IMAGE_NAME }}:latest-native
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy scan — release native image (SARIF)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+          format: sarif
+          output: trivy-release.sarif
+          ignore-unfixed: false
+          vuln-type: 'os,library'
+          scanners: 'vuln,secret,misconfig'
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-release.sarif
+          category: trivy-release
+
+      - name: Export image tarball for release attachment
+        run: |
+          docker save "${IMAGE_NAME}:${{ steps.tag.outputs.value }}" \
+            | gzip > "release-artifacts/${IMAGE_NAME}-${{ steps.tag.outputs.value }}-native.tar.gz"
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: Release ${{ steps.tag.outputs.value }}
+          generate_release_notes: true
+          files: |
+            release-artifacts/*-runner
+            release-artifacts/bom.json
+            release-artifacts/bom.xml
+            release-artifacts/*-native.tar.gz

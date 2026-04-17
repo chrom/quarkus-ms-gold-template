@@ -1,0 +1,81 @@
+# Dependabot configuration — keep dependencies and CI toolchain patched automatically.
+#
+# Three ecosystems are watched:
+#   - maven      : application code dependencies (pom.xml, including Quarkus BOM).
+#   - github-actions : pinned action versions in .github/workflows/.
+#   - docker     : base images referenced in src/main/docker/Dockerfile.*.
+#
+# PRs are grouped to keep review noise low; security updates bypass grouping automatically
+# (Dependabot escalates them outside the weekly window).
+
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - maven
+    commit-message:
+      prefix: 'chore(deps)'
+      include: scope
+    groups:
+      quarkus:
+        patterns:
+          - 'io.quarkus*'
+          - 'io.quarkus.platform*'
+      opentelemetry:
+        patterns:
+          - 'io.opentelemetry*'
+      test-tooling:
+        patterns:
+          - 'com.tngtech.archunit*'
+          - 'io.rest-assured*'
+          - 'org.jacoco*'
+      build-plugins:
+        patterns:
+          - 'org.apache.maven.plugins:*'
+          - 'org.cyclonedx*'
+    ignore:
+      # Major versions of Quarkus warrant manual coordination (BOM-wide breaking changes).
+      - dependency-name: 'io.quarkus.platform:quarkus-bom'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: 'chore(ci)'
+      include: scope
+    groups:
+      actions-minor-patch:
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: docker
+    directories:
+      - /src/main/docker
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: 'chore(docker)'
+      include: scope

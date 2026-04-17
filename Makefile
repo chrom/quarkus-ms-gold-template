@@ -6,7 +6,7 @@
 COMPOSE_PROD  := -f deploy/docker-compose.yml
 COMPOSE_METRICS := docker compose -p metrics -f deploy/docker-compose-metrics.yml
 
-.PHONY: help dev dev-secured test build-native package-native \
+.PHONY: help dev dev-secured test verify coverage sbom sbom-show image-scan sonar-local ci-local build-native package-native \
 	k3d-registry-check docker-build-native-image docker-tag-compose-for-k3d docker-push docker-build-push-native \
 	up-prod stop-prod stop-all clean-prod clean-metrics clean-all docker-clean-project prune-all \
 	up-metrics down-prod down-metrics down-all logs-app logs-db status verify-observability grafana-reset-admin \
@@ -325,6 +325,74 @@ load-test: ## 🚀 Run load test (locally; requires k6)
 load-test-docker: ## 🐳 Run load test via Docker (no k6 installation required)
 	@echo "  🔥 Launching k6 (Docker): $(VUS) users, $(DURATION) duration → $(BASE_URL)"
 	docker run --rm -i --network=host -e VUS=$(VUS) -e DURATION=$(DURATION) -e BASE_URL=$(BASE_URL) grafana/k6 run - <load-tests/k6/k6-load-test.js
+
+# ── CI / SUPPLY CHAIN (local mirror) ──────────────────────────
+# Local equivalents of .github/workflows/ci.yaml steps.
+# Same commands, same flags — so "green locally" ≈ "green on PR".
+# ADR: docs/adr/0009-ci-supply-chain-baseline.md
+
+# Must match ci.yaml env.IMAGE_NAME for parity; tag uses short git sha locally.
+CI_IMAGE_NAME := quarkus-ms-gold-template
+CI_IMAGE_TAG  ?= ci-$(shell git rev-parse --short HEAD 2>/dev/null || echo local)
+CI_IMAGE_REF  := $(CI_IMAGE_NAME):$(CI_IMAGE_TAG)
+# Pin Trivy to the same major version the workflow uses (aquasecurity/trivy-action@0.28.0).
+TRIVY_IMG     := aquasec/trivy:0.58.1
+
+verify: ## ✅ CI-parity: mvn clean verify -DskipITs=false (tests + JaCoCo + SBOM)
+	@echo "  ▶ Full verify (unit + IT + coverage + SBOM) …"
+	./mvnw -B -ntp clean verify -DskipITs=false
+	@echo "  ✅ JaCoCo: target/site/jacoco/index.html"
+	@echo "  ✅ SBOM:   target/bom.json, target/bom.xml"
+
+coverage: verify ## 📊 Run verify + show JaCoCo report path (open in browser)
+	@echo ""
+	@echo "  📊 JaCoCo HTML: file://$(CURDIR)/target/site/jacoco/index.html"
+	@if command -v xdg-open >/dev/null 2>&1; then xdg-open target/site/jacoco/index.html >/dev/null 2>&1 || true; fi
+
+sbom: ## 📦 Regenerate CycloneDX SBOM only (fast path, no tests)
+	./mvnw -B -ntp -DskipTests package cyclonedx:makeAggregateBom
+	@$(MAKE) --no-print-directory sbom-show
+
+sbom-show: ## 🔎 Summarise target/bom.json (format, components count)
+	@test -f target/bom.json || { echo "  ❌ No target/bom.json — run: make sbom"; exit 1; }
+	@python3 -c "import json; b=json.load(open('target/bom.json')); \
+		print(f\"  bomFormat:   {b['bomFormat']}\"); \
+		print(f\"  specVersion: {b['specVersion']}\"); \
+		print(f\"  components:  {len(b.get('components',[]))}\")"
+
+image-scan: ## 🛡️  CI-parity: build Dockerfile.jvm locally and run Trivy (HIGH/CRITICAL, ignore-unfixed)
+	@test -d target/quarkus-app || { echo "  ❌ target/quarkus-app missing — run: make verify"; exit 1; }
+	@echo "  ▶ Building JVM image: $(CI_IMAGE_REF)"
+	docker build -f src/main/docker/Dockerfile.jvm -t $(CI_IMAGE_REF) .
+	@echo "  ▶ Trivy scan (same filters as ci.yaml fail-gate) …"
+	docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		$(TRIVY_IMG) image \
+			--severity HIGH,CRITICAL \
+			--ignore-unfixed \
+			--vuln-type os,library \
+			--scanners vuln,secret,misconfig \
+			--exit-code 1 \
+			--format table \
+			--timeout 5m \
+			$(CI_IMAGE_REF)
+	@echo "  ✅ image-scan clean: $(CI_IMAGE_REF)"
+
+sonar-local: ## 📡 Run SonarQube scan against $$SONAR_HOST_URL (needs SONAR_TOKEN; runs verify first)
+	@[ -n "$$SONAR_HOST_URL" ] || { echo "  ❌ SONAR_HOST_URL not set"; exit 1; }
+	@[ -n "$$SONAR_TOKEN" ]    || { echo "  ❌ SONAR_TOKEN not set";    exit 1; }
+	$(MAKE) verify
+	./mvnw -B -ntp sonar:sonar \
+		-Dsonar.host.url="$$SONAR_HOST_URL" \
+		-Dsonar.token="$$SONAR_TOKEN" \
+		-Dsonar.qualitygate.wait=true
+
+ci-local: ## 🧪 Full CI mirror: openapi-check-sync + verify + image-scan (what PR will run)
+	$(MAKE) openapi-check-sync
+	$(MAKE) verify
+	$(MAKE) image-scan
+	@echo ""
+	@echo "  ✅ ci-local: all PR gates passed on this workstation."
 
 # ── HELM (K8s deployment — k3d or cloud) ─────────────────────
 # Requires: k3d cluster (make k3d-bootstrap in infra-bootstrap)

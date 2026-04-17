@@ -49,6 +49,18 @@ When people say “there are no limits on the API for security,” they usually 
 
 *Optional backlog:* rename artifact to `openapi-ci.yaml` if you prefer a dedicated filename (behavior is unchanged).
 
+### Phase A′ — Build, coverage, and supply-chain CI
+
+**Status (template): implemented.** Formalised in **ADR 0009**. Complements Phase A (which only gates the OpenAPI contract) with full build/test/security coverage.
+
+1. **`.github/workflows/ci.yaml`** — unit + integration tests, JaCoCo coverage (0.8.14, Java 25-ready), CycloneDX SBOM (`target/bom.{json,xml}`), JVM image build via `Dockerfile.jvm`, Trivy scan (SARIF upload + fail-fast on fixable HIGH/CRITICAL), conditional SonarQube analysis.
+2. **`.github/workflows/release.yaml`** — on `v*.*.*` tags: native image build, Trivy scan of the native image, GitHub Release with runner binary + SBOM + native container tarball attached.
+3. **`.github/dependabot.yml`** — weekly grouped updates for Maven (grouped by `quarkus`, `opentelemetry`, `test-tooling`, `build-plugins`), GitHub Actions, and Docker base images.
+4. **`ci-passed` aggregation gate** — single required check for branch protection; skipped Sonar (while `vars.SONAR_HOST_URL` is unset) counts as success.
+5. **SonarQube** is self-hosted and deployed by `infra-bootstrap` per the task spec in [`docs/infra/sonarqube-setup.md`](../infra/sonarqube-setup.md); application side activates automatically once `SONAR_HOST_URL` + `SONAR_TOKEN` are set in the repo.
+
+*Deferred (tracked as `TODO(registry):` markers in the workflows):* container registry push — currently a dry run until the target registry (ghcr.io likely) is confirmed at deployment time.
+
 ### Phase B — Security baseline (application + edge)
 
 1. **Threat model lite (STRIDE one-pager)** — documented: [`docs/security/threat-model-lite.md`](../security/threat-model-lite.md).
@@ -96,6 +108,7 @@ Update that file when closing gaps; keep this ADR section as the **index** into 
 - ADR 0001 — Gold Template concept  
 - ADR 0002 — SRE / production readiness (SLO **targets**; alerting implementation tracked in Phase F above)  
 - ADR 0007 — Catalog hexagonal slice  
+- ADR 0009 — CI / supply-chain baseline (Phase A′ implementation detail)  
 - `docs/RUNBOOK.md` — incident response  
 - `docs/roadmap/README.md` — roadmap index  
 - `docs/api/versioning.md` — API versioning and contract process (Phase A)  
