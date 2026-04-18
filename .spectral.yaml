@@ -15,3 +15,47 @@ rules:
   path-params: error
   contact-properties: off
   tag-description: warn
+
+  # ------------------------------------------------------------------------
+  # Custom rules — RFC 7807 API error contract (see ADR 0012).
+  # ------------------------------------------------------------------------
+
+  # Every 4xx/5xx response MUST use the application/problem+json media type.
+  # The filter ProblemDetailsOASFilter normalises this on the server side, so a
+  # violation here means either the filter regressed or the committed openapi.yaml
+  # drifted from what the code generates.
+  problem-json-media-type-on-errors:
+    description: 4xx/5xx responses must declare content type application/problem+json (RFC 7807, ADR 0012).
+    message: "{{path}} — error response must expose application/problem+json (got keys: {{value}})"
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch,options,head].responses[?(@property.match(/^[45]/))]
+    then:
+      field: content
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          required: [application/problem+json]
+
+  # The problem body must reference the shared #/components/schemas/Problem schema —
+  # clients rely on a single stable contract.
+  problem-schema-ref-on-errors:
+    description: 4xx/5xx responses must reference #/components/schemas/Problem.
+    message: "{{path}} — content['application/problem+json'].schema must $ref to #/components/schemas/Problem"
+    severity: error
+    given: $.paths[*][get,put,post,delete,patch,options,head].responses[?(@property.match(/^[45]/))].content[application/problem+json].schema
+    then:
+      field: "$ref"
+      function: pattern
+      functionOptions:
+        match: "^#/components/schemas/Problem$"
+
+  # The Problem schema itself must exist in components so the $refs above resolve.
+  problem-schema-defined:
+    description: "#/components/schemas/Problem must be defined (RFC 7807 body; ADR 0012)."
+    message: "components.schemas.Problem is missing."
+    severity: error
+    given: $.components.schemas
+    then:
+      field: Problem
+      function: truthy

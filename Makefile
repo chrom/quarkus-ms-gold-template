@@ -6,7 +6,7 @@
 COMPOSE_PROD  := -f deploy/docker-compose.yml
 COMPOSE_METRICS := docker compose -p metrics -f deploy/docker-compose-metrics.yml
 
-.PHONY: help dev dev-secured test verify coverage it-pg check-docker sbom sbom-show image-scan sonar-local ci-local build-native package-native \
+.PHONY: help dev dev-secured test verify coverage it-pg check-docker sbom sbom-show sbom-list sbom-diff image-scan sonar-local ci-local build-native package-native \
 	k3d-registry-check docker-build-native-image docker-tag-compose-for-k3d docker-push docker-build-push-native \
 	up-prod stop-prod stop-all clean-prod clean-metrics clean-all docker-clean-project prune-all \
 	up-metrics down-prod down-metrics down-all logs-app logs-db status verify-observability grafana-reset-admin \
@@ -377,6 +377,38 @@ sbom-show: ## 🔎 Summarise target/bom.json (format, components count)
 		print(f\"  bomFormat:   {b['bomFormat']}\"); \
 		print(f\"  specVersion: {b['specVersion']}\"); \
 		print(f\"  components:  {len(b.get('components',[]))}\")"
+
+sbom-list: ## 📜 Print every SBOM component as 'group:name@version' (sorted, pipe to grep/less)
+	@test -f target/bom.json || { echo "  ❌ No target/bom.json — run: make sbom"; exit 1; }
+	@python3 -c "import json; \
+		comps=json.load(open('target/bom.json')).get('components',[]); \
+		rows=sorted({(c.get('group') or '-', c.get('name') or '-', c.get('version') or '-') for c in comps}); \
+		[print(f'{g}:{n}@{v}') for g,n,v in rows]"
+
+# Baseline SBOM to diff against. Override with: make sbom-diff BASE=/path/to/old-bom.json
+# Typical workflow: on main -> `make sbom && cp target/bom.json /tmp/bom.base.json`;
+#                   on feature/Dependabot branch -> `make sbom && make sbom-diff`.
+BASE ?= /tmp/bom.base.json
+
+sbom-diff: ## 🔀 Diff current SBOM vs BASE (added / removed / upgraded) — set BASE=<path>
+	@test -f target/bom.json || { echo "  ❌ No target/bom.json — run: make sbom"; exit 1; }
+	@test -f "$(BASE)" || { \
+		echo "  ❌ Baseline not found: $(BASE)"; \
+		echo "     Generate one, e.g.: git switch main && make sbom && cp target/bom.json $(BASE)"; \
+		exit 1; }
+	@echo "  ▶ Comparing target/bom.json  vs  $(BASE)"
+	@python3 -c "import json; \
+		cur  = {(c.get('group') or '-', c.get('name') or '-'): (c.get('version') or '-') for c in json.load(open('target/bom.json')).get('components', [])}; \
+		base = {(c.get('group') or '-', c.get('name') or '-'): (c.get('version') or '-') for c in json.load(open('$(BASE)')).get('components', [])}; \
+		added    = sorted(k for k in cur if k not in base); \
+		removed  = sorted(k for k in base if k not in cur); \
+		upgraded = sorted([(k, base[k], cur[k]) for k in cur if k in base and base[k] != cur[k]]); \
+		print(f'  + added:    {len(added)}'); \
+		[print(f'      + {g}:{n}@{cur[(g,n)]}') for g,n in added]; \
+		print(f'  - removed:  {len(removed)}'); \
+		[print(f'      - {g}:{n}@{base[(g,n)]}') for g,n in removed]; \
+		print(f'  ~ upgraded: {len(upgraded)}'); \
+		[print(f'      ~ {t[0][0]}:{t[0][1]}  {t[1]} -> {t[2]}') for t in upgraded]"
 
 image-scan: ## 🛡️  CI-parity: build Dockerfile.jvm locally and run Trivy (HIGH/CRITICAL, ignore-unfixed)
 	@test -d target/quarkus-app || { echo "  ❌ target/quarkus-app missing — run: make verify"; exit 1; }

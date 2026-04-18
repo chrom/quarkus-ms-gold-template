@@ -1,16 +1,26 @@
-package org.acme.service;
-
-import jakarta.enterprise.context.ApplicationScoped;
-import org.eclipse.microprofile.faulttolerance.Fallback;
-import org.eclipse.microprofile.faulttolerance.Retry;
-import org.eclipse.microprofile.faulttolerance.Timeout;
+package org.acme.catalog.adapter.out.recommendation;
 
 import java.util.List;
 import java.util.Random;
 
+import org.eclipse.microprofile.faulttolerance.Fallback;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
+
 import io.micrometer.core.annotation.Counted;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
 
+import jakarta.enterprise.context.ApplicationScoped;
+
+/**
+ * Simulated outbound call to a flaky recommendations service — kept in the catalog bounded
+ * context (see ADR 0007) as a concrete infrastructure adapter, accessed only through
+ * {@link RecommendationAdapter} and {@code RecommendationPort}.
+ *
+ * <p>Relocated from {@code org.acme.service} to {@code org.acme.catalog.adapter.out.recommendation}
+ * as part of ADR 0012 / Wave 2 Block C. An ArchUnit rule forbids any new code landing under the
+ * legacy {@code org.acme.service..} package so this drift cannot reappear.
+ */
 @ApplicationScoped
 public class RecommendationService {
 
@@ -28,7 +38,7 @@ public class RecommendationService {
 
         if (chance < 30) {
             // 30% chance: Service hangs (3 seconds)
-            Thread.sleep(3000); 
+            Thread.sleep(3000);
         } else if (chance < 60) {
             // 30% chance: Service rejected the request (simulating Network Error)
             throw new RuntimeException("Connection Failed");

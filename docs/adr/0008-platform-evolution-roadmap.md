@@ -28,7 +28,8 @@ When people say “there are no limits on the API for security,” they usually 
 | Area | Current template state | Target outcome (next versions) |
 |------|------------------------|--------------------------------|
 | **Security** | Threat model lite; optional **`secured`** profile (`quarkus-oidc`, `GET /api/secured/me`); unauthenticated routes unchanged by default — [`oidc-secured-profile.md`](../security/oidc-secured-profile.md) | Secrets via platform; TLS at ingress; Phase B.3–4 (rate limiting, security headers, prod hardening) |
-| **API contract tests in CI** | **GitHub Actions**: sync + **Spectral** (`.spectral.yaml`) on prod spec + on **PR** `oasdiff breaking` vs merge base | Stricter Spectral rules or extra policies — `docs/api/versioning.md` |
+| **API contract tests in CI** | **GitHub Actions**: sync + **Spectral** (`.spectral.yaml`) on prod spec + on **PR** `oasdiff breaking` vs merge base; error-contract rules enforced per **ADR 0012** | Stricter Spectral rules or extra policies — `docs/api/versioning.md` |
+| **API error contract** | **RFC 7807 `application/problem+json`** (uniform `ProblemDetail` body, centralised mappers, `OASFilter` + Spectral enforcement) — see **ADR 0012** | Domain-specific `type` URIs once catalogue stabilises; SDK regeneration in infra-bootstrap |
 | **API versioning** | Documented in [`docs/api/versioning.md`](../api/versioning.md); paths may stay unversioned until you publish a stable external API | Add `/api/v1/...` (or header strategy) when promoting a consumer-facing contract; sunset policy as needed |
 | **Idempotency & events** | Synchronous HTTP only (ADR 0001) | Idempotency keys for mutating APIs; **outbox**, brokers, consumers — see **`docs/roadmap/event-driven-orchestration.md`** |
 | **Event-driven orchestration** | No broker, no outbox, no workflow engine in repo | Phased plan: infra → outbox → consumers → async observability → optional workflow ADR ([roadmap doc](../roadmap/event-driven-orchestration.md)) |
@@ -111,6 +112,8 @@ Update that file when closing gaps; keep this ADR section as the **index** into 
 - ADR 0007 — Catalog hexagonal slice  
 - ADR 0009 — CI / supply-chain baseline (Phase A′ implementation detail)  
 - ADR 0010 — Runtime hardening and env-split NetworkPolicy (Phase B step 6)  
+- ADR 0011 — Integration tests on PostgreSQL via Testcontainers  
+- ADR 0012 — API error contract (RFC 7807 Problem Details)  
 - `docs/RUNBOOK.md` — incident response  
 - `docs/roadmap/README.md` — roadmap index  
 - `docs/api/versioning.md` — API versioning and contract process (Phase A)  

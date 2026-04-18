@@ -6,6 +6,7 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
@@ -44,6 +45,45 @@ class ArchitectureConventionsTest {
                 .resideInAnyPackage("org.h2..")
                 .as("no class in org.acme may depend on org.h2.. (see ADR 0011)")
                 .because("integration tests must run on the same PostgreSQL major version as stage/prod");
+
+        rule.check(MAIN_AND_TESTS);
+    }
+
+    /**
+     * The hexagonal slice for the catalog bounded context (ADR 0007) owns its own outbound
+     * adapters, including the recommendation engine. A legacy {@code org.acme.service}
+     * package used to host {@code RecommendationService}, which meant the adapter reached
+     * out of its own bounded context to fetch a collaborator and, worse, gave future
+     * contributors a "default" bucket to drop new services into — exactly the kind of
+     * anemic layering ADR 0007 was written to prevent. This rule keeps the legacy package
+     * empty so drift cannot return silently, and pins recommendation collaborators to the
+     * catalog outbound adapter package where they belong.
+     */
+    @Test
+    void legacyServicePackageStaysEmpty() {
+        ArchRule rule = noClasses()
+                .that()
+                .resideInAPackage("org.acme.service..")
+                .should()
+                .bePublic()
+                .orShould()
+                .bePackagePrivate()
+                .as("org.acme.service.. must not contain classes (see ADR 0007, ADR 0012)")
+                .because("legacy service bucket was removed in favour of bounded-context adapters")
+                .allowEmptyShould(true);
+
+        rule.check(MAIN_AND_TESTS);
+    }
+
+    @Test
+    void recommendationServiceLivesInCatalogOutboundAdapter() {
+        ArchRule rule = classes()
+                .that()
+                .haveSimpleName("RecommendationService")
+                .should()
+                .resideInAPackage("org.acme.catalog.adapter.out.recommendation")
+                .as("RecommendationService must live next to its catalog outbound adapter")
+                .because("the catalog bounded context owns its recommendation collaborator (ADR 0007)");
 
         rule.check(MAIN_AND_TESTS);
     }

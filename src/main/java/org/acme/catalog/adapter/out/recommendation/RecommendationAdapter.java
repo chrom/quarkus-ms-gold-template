@@ -4,7 +4,6 @@ import java.util.List;
 
 import org.acme.catalog.application.port.out.RecommendationPort;
 import org.acme.catalog.domain.ids.ProductId;
-import org.acme.service.RecommendationService;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
