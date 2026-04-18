@@ -25,7 +25,6 @@ An enterprise-grade reference microservice template for building production-read
   - **GitHub Actions**: [`openapi-contract.yml`](.github/workflows/openapi-contract.yml) — committed `openapi/openapi.yaml` must match prod codegen; **Spectral** lint (`.spectral.yaml`); PRs are checked for **breaking** changes vs the merge base (`oasdiff`).
   - Integration testing with RestAssured.
   - Load testing scenarios using **k6**.
-- **Internal Course**: Includes a structured advanced Quarkus course (available in `docs/quarkus-course/`).
 - **Optional OIDC**: Activate build profile `secured` with `dev` or `prod` for JWT validation (`/api/secured/me`) — see [`docs/security/oidc-secured-profile.md`](docs/security/oidc-secured-profile.md); `make dev-secured`.
 
 ---
@@ -223,10 +222,8 @@ jq '.components | length' target/bom.json
 
 ---
 
-## 🎓 Internal Education
+## 🎓 Documentation
 
-The documentation includes a deep-dive **Quarkus Course** (Ukrainian) for Senior/Middle developers:
-- [Course Contents](docs/quarkus-course/README.md)
 - [Architecture Decision Records (ADR)](docs/adr/) — start with [ADR 0001](docs/adr/0001-gold-template-concept.md), [ADR 0007](docs/adr/0007-catalog-hexagonal-slice.md) (catalog), and [ADR 0008](docs/adr/0008-platform-evolution-roadmap.md) (planned next capabilities: security, contract CI, versioning, idempotency/events, multitenancy, compliance, rate limiting)
 - [Roadmap docs](docs/roadmap/) — e.g. [event-driven orchestration backlog](docs/roadmap/event-driven-orchestration.md) (Phase G detail)
 - [Observability Guide](docs/observability/)

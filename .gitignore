@@ -21,8 +21,9 @@ bin/
 # NetBeans
 nb-configuration.xml
 
-# Visual Studio Code
-.vscode/
+# Visual Studio Code — ignore local state; keep shared workspace settings tracked
+.vscode/*
+!.vscode/settings.json
 .factorypath
 
 # Quarkus (dev mode, CLI cache, build analytics)
@@ -72,6 +73,10 @@ Thumbs.db
 .agent/
 .agents/
 .claude/
-.cursor/
+# Local Cursor UI state stays untracked; shared agent rules + CLI overrides are tracked.
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/cli.json
 .aider*
 .copilot*

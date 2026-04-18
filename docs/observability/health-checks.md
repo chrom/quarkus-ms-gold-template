@@ -4,7 +4,7 @@
 
 **Health** — це не «ще одна метрика», а **відповіді для оркестратора** (Kubernetes, Nomad, cloud LB): чи перезапускати процес, чи пускати на нього **користувацький** трафік, чи дочекатися **довгого старту** (cold start, Native).
 
-Теорія та best practices курсу — у **[Розділі 14](../quarkus-course/14-health-metrics-openapi.md)**. Тут — **що вже є в репозиторії** і **план подальших кроків** у тому ж дусі, що й [logging-loki-alloy.md](logging-loki-alloy.md).
+Теорія та офіційний гайд — [Quarkus SmallRye Health](https://quarkus.io/guides/smallrye-health); контекст у репозиторії — [ADR 0004](../adr/0004-health-checks.md). Нижче — **що вже є в репозиторії** і **план подальших кроків** у тому ж дусі, що й [logging-loki-alloy.md](logging-loki-alloy.md).
 
 ---
 
@@ -62,18 +62,18 @@ curl -s http://localhost:8080/q/health/ready
 
 ### Наступні кроки (опційно, за потреби продакшену)
 
-1. **Startup probe** — якщо **Native** або важкі залежності дають старт **довше за liveness `initialDelaySeconds`**: додати `@Startup` health check або налаштувати `/q/health/started` і **startupProbe** у Kubernetes (деталі — Розділ 14).
+1. **Startup probe** — якщо **Native** або важкі залежності дають старт **довше за liveness `initialDelaySeconds`**: додати `@Startup` health check або налаштувати `/q/health/started` і **startupProbe** у Kubernetes (див. [Quarkus SmallRye Health](https://quarkus.io/guides/smallrye-health)).
 2. **Приклад маніфесту K8s** — фрагмент `Deployment` з `livenessProbe` / `readinessProbe` / `startupProbe` під ці URL (можна покласти в `docs/` або `k8s/` як референс).
-3. **Безпека** — health не повинен у публічному інтернеті віддавати **зайві деталі** помилок; за потреби обмежити на ingress або окремий admin-порт (див. Розділ 14).
+3. **Безпека** — health не повинен у публічному інтернеті віддавати **зайві деталі** помилок; за потреби обмежити на ingress або окремий admin-порт.
 4. **Grafana / Prometheus** — health **не** замінює метрики; для SLO використовуються **метрики** та алерти; readiness — лише для **маршрутизації трафіку**.
 
 ---
 
-## Зв’язок з курсом і чеклістом
+## Пов’язані матеріали
 
-- Розділ **14** — [Health, Metrics, OpenAPI](../quarkus-course/14-health-metrics-openapi.md).
-- Розділ **11** — [Production checklist](../quarkus-course/11-production-checklist.md) (health: live vs ready; startup probe).
+- [ADR 0004 — Health checks](../adr/0004-health-checks.md)
+- [Quarkus SmallRye Health](https://quarkus.io/guides/smallrye-health)
 
 ---
 
-[← Observability](README.md) · [Курс Quarkus](../quarkus-course/README.md)
+[← Observability](README.md)

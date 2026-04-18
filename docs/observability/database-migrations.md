@@ -2,7 +2,7 @@
 
 ## Навіщо цей документ
 
-Узгодження **Flyway** (єдине джерело DDL у репозиторії) з **Hibernate ORM** (модель у Java, без автогенерації схеми в проді) і розуміння **expand/contract** для безпечних змін у production. Детальніше по курсу — [Розділ 9](../quarkus-course/09-mihratsii-bazy.md).
+Узгодження **Flyway** (єдине джерело DDL у репозиторії) з **Hibernate ORM** (модель у Java, без автогенерації схеми в проді) і розуміння **expand/contract** для безпечних змін у production. Політика міграцій — у [ADR 0005](../adr/0005-database-migrations.md).
 
 ---
 
@@ -63,8 +63,8 @@
 
 ## Пов’язані матеріали
 
-- [Розділ 9. Міграції БД](../quarkus-course/09-mihratsii-bazy.md)
-- [Розділ 11. Production checklist](../quarkus-course/11-production-checklist.md)
+- [ADR 0005 — Database migrations (Flyway)](../adr/0005-database-migrations.md)
+- [RUNBOOK.md](../RUNBOOK.md) (операційні нотатки)
 
 ---
 
