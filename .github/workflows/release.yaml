@@ -104,7 +104,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trivy scan — release native image (SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
           format: sarif

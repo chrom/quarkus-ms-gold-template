@@ -210,7 +210,7 @@ jobs:
       #   1) SARIF report (severity-agnostic) for the Security tab — always uploaded.
       #   2) Table report (HIGH/CRITICAL, fix-available only) — used as the PR gate.
       - name: Trivy scan — SARIF for Security tab
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ needs.build-image.outputs.image-ref }}
           format: sarif
@@ -228,7 +228,7 @@ jobs:
           category: trivy-image
 
       - name: Trivy scan — fail on fixable HIGH/CRITICAL
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ needs.build-image.outputs.image-ref }}
           format: table
