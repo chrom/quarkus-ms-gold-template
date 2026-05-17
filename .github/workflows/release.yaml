@@ -91,7 +91,7 @@ jobs:
 
       # Local build only. Registry push is deliberately gated (see TODO(registry) above).
       - name: Build native container image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/main/docker/Dockerfile.native-micro
