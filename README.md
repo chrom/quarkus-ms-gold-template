@@ -11,21 +11,37 @@ An enterprise-grade reference microservice template for building production-read
 
 ## 🚀 Key Features
 
-- **Java 25** (see `pom.xml`; Java 21+ compatible): modern bytecode and tooling.
-- **Persistence**: Hibernate ORM with Panache, PostgreSQL support, and Flyway migrations.
-- **REST API**: Jackson-powered JSON serialization; pagination via query parameters and typed page wrappers (see catalog resources).
-- **Catalog slice (reference)**: Ports & adapters under `org.acme.catalog` — domain isolated from JPA/REST; **ArchUnit** enforces domain dependency rules (requires **ArchUnit 1.4.1+** on Java 25). See [ADR 0007](docs/adr/0007-catalog-hexagonal-slice.md).
-- **Full Observability Stack**:
-  - **Metrics**: Micrometer with Prometheus registry.
-  - **Tracing**: OpenTelemetry (OTEL) integrated with Jaeger.
-  - **Logging**: Structured JSON logging exported to Grafana Loki via Grafana Alloy.
-  - **Dashboards**: Pre-provisioned Grafana dashboards.
-- **Quality Assurance**: 
-  - Automated OpenAPI spec generation & validation.
-  - **GitHub Actions**: [`openapi-contract.yml`](.github/workflows/openapi-contract.yml) — committed `openapi/openapi.yaml` must match prod codegen; **Spectral** lint (`.spectral.yaml`); PRs are checked for **breaking** changes vs the merge base (`oasdiff`).
-  - Integration testing with RestAssured.
-  - Load testing scenarios using **k6**.
-- **Optional OIDC**: Activate build profile `secured` with `dev` or `prod` for JWT validation (`/api/secured/me`) — see [`docs/security/oidc-secured-profile.md`](docs/security/oidc-secured-profile.md); `make dev-secured`.
+- **Modern Java/Quarkus baseline**: Java 25 toolchain, Quarkus 3.34.x, Maven Wrapper, RESTEasy Reactive, Jackson, Hibernate ORM with Panache, Flyway, PostgreSQL, validation, health checks, metrics, and OpenAPI.
+- **Reference business slice**: a small catalog bounded context under `org.acme.catalog` that demonstrates a pragmatic hexagonal layout: domain model, application ports/services, inbound REST adapter, outbound persistence/recommendation adapters. See [ADR 0007](docs/adr/0007-catalog-hexagonal-slice.md).
+- **API contract discipline**: generated OpenAPI is committed, checked for drift, linted with Spectral, and compared for breaking changes on PRs with `oasdiff`.
+- **Uniform error contract**: every 4xx/5xx response uses RFC 7807 `application/problem+json` with one shared `Problem` schema, centralised mappers, request-id correlation, OpenAPI normalisation, and Spectral enforcement. See [ADR 0012](docs/adr/0012-api-error-contract-problem-details.md).
+- **Production observability**: Micrometer + Prometheus metrics, OpenTelemetry traces, Jaeger UI, structured JSON logs, Grafana Alloy, Loki, and pre-provisioned Grafana dashboards.
+- **Testing baseline**: unit tests, RestAssured API tests, ArchUnit architecture tests, PostgreSQL-backed integration tests via Testcontainers, Flyway migration verification, and k6 load-test scenarios.
+- **CI / supply-chain baseline**: GitHub Actions build/test pipeline, JaCoCo coverage, CycloneDX SBOM, Trivy image scanning, conditional SonarQube analysis, Dependabot, OpenAPI contract workflow, and tag-based release workflow. See [ADR 0009](docs/adr/0009-ci-supply-chain-baseline.md).
+- **Container and Kubernetes readiness**: JVM and native Dockerfiles, local k3d registry helpers, Helm chart, Pod Security Standards-compatible runtime hardening, `PodDisruptionBudget`, env-split `NetworkPolicy`, and Gateway API-oriented routing ownership. See [ADR 0010](docs/adr/0010-runtime-hardening-and-network-policy.md).
+- **Optional OIDC profile**: activate the `secured` build profile for JWT validation and the reference `/api/secured/me` endpoint. See [`docs/security/oidc-secured-profile.md`](docs/security/oidc-secured-profile.md) and `make dev-secured`.
+
+---
+
+## ✅ What Is Included In The Gold Template
+
+This repository is intended to be cloned as the starting point for a production-grade Quarkus microservice. It is not just a demo app: the template encodes engineering decisions, local-development workflows, CI gates, operational defaults, and future extension points.
+
+| Area | Included capability | Main files |
+|------|---------------------|------------|
+| **Runtime** | Quarkus app with REST API, JSON serialization, validation, health checks, OpenAPI, metrics, and PostgreSQL persistence. | `pom.xml`, `src/main/resources/application.properties`, `src/main/java/org/acme` |
+| **Domain architecture** | Catalog bounded context with ports/adapters and ArchUnit guardrails so domain code does not drift into REST/JPA concerns. | `src/main/java/org/acme/catalog`, `src/test/java/org/acme/*Architecture*Test.java`, `docs/adr/0007-catalog-hexagonal-slice.md` |
+| **Database** | Flyway migrations, PostgreSQL configuration, prod schema validation, and Testcontainers-backed integration tests. | `src/main/resources/db/migration`, `src/test/java`, `docs/adr/0005-database-migrations.md`, `docs/adr/0011-integration-tests-on-postgres-via-testcontainers.md` |
+| **HTTP API contract** | OpenAPI generation, committed contract snapshot, sync gate, Spectral lint, `oasdiff` breaking-change check, API versioning guidance. | `openapi/openapi.yaml`, `.spectral.yaml`, `.github/workflows/openapi-contract.yml`, `docs/api/versioning.md` |
+| **Error handling** | One RFC 7807 `ProblemDetail` body for all errors, centralised mappers, `requestId` correlation, and OpenAPI/Spectral enforcement. | `src/main/java/org/acme/rest/error`, `src/main/java/org/acme/openapi/ProblemDetailsOASFilter.java`, `docs/adr/0012-api-error-contract-problem-details.md` |
+| **Security baseline** | Threat-model lite, optional OIDC secured profile, pod/container hardening, stdout-only prod logging, NetworkPolicy for stage/prod. | `docs/security`, `deploy/helm`, `docs/adr/0010-runtime-hardening-and-network-policy.md` |
+| **Observability** | Prometheus, Grafana, Jaeger, Loki, Grafana Alloy, structured logs, dashboards, and verification commands. | `deploy/docker-compose-metrics.yml`, `grafana/`, `deploy/helm/files/dashboards`, `docs/observability` |
+| **Quality gates** | Unit/integration tests, ArchUnit, coverage, OpenAPI checks, Helm render checks, image scan, SBOM, and optional SonarQube Quality Gate. | `Makefile`, `.github/workflows/ci.yaml`, `sonar-project.properties` |
+| **Supply chain** | CycloneDX SBOM (`target/bom.json` / `bom.xml`), Trivy CVE scanning, Dependabot grouped updates for Maven, actions, and Docker images. | `.github/dependabot.yml`, `pom.xml`, `.github/workflows/ci.yaml` |
+| **Kubernetes delivery** | Helm chart with stage/prod values, PSS-restricted security context, `emptyDir` writable paths, `PodDisruptionBudget`, and `NetworkPolicy`. | `deploy/helm`, `docs/adr/0010-runtime-hardening-and-network-policy.md` |
+| **Platform integration** | Clear boundary with sibling `infra-bootstrap`: Gateway API routing, Keycloak/OIDC, SonarQube, and future reusable workflows live at platform level. | `docs/infra`, `docs/adr/0009-ci-supply-chain-baseline.md` |
+
+The guiding rule is: **service-specific behaviour stays in this repository; platform-wide routing, identity, shared CI primitives, and shared infrastructure live in `infra-bootstrap`.**
 
 ---
 
@@ -68,7 +84,7 @@ flowchart TB
 
 ### Prerequisites
 
-- **Java 21** or later
+- **Java 25** or later
 - **Docker** and **Docker Compose**
 - **GNU Make** (recommended for ease of use)
 
@@ -219,6 +235,39 @@ To verify artefacts locally:
 ./mvnw -ntp package                  # generates target/bom.json + bom.xml
 jq '.components | length' target/bom.json
 ```
+
+---
+
+## 🧭 Roadmap: What Still Needs To Be Added
+
+The template intentionally starts with a strong synchronous HTTP + PostgreSQL + operations baseline. Larger platform capabilities are tracked as future phases in [ADR 0008](docs/adr/0008-platform-evolution-roadmap.md) and should be added only when the owning service or platform actually needs them.
+
+| Phase | Status | What remains |
+|-------|--------|--------------|
+| **Phase A — API contract safety** | ✅ Implemented | OpenAPI sync, Spectral, `oasdiff`, and versioning guidance are already in place. Future work: make rules stricter only when a consuming team needs a new policy. |
+| **Phase A′ — Build / CI / supply chain** | ✅ Implemented | Build/test pipeline, SBOM, Trivy, Dependabot, release workflow, and conditional SonarQube wiring are present. Future work: enable real registry push after choosing `ghcr.io`, Harbor, ECR, or another registry. |
+| **Phase B — Security baseline** | 🟡 Partially implemented | Implemented: threat-model lite, optional OIDC profile, runtime hardening, stdout-only prod logs, env-split NetworkPolicy. Remaining: gateway-owned rate limiting policy, stage/prod security headers, CORS template, and a role-protected business endpoint example such as `/api/admin/ping`. |
+| **Phase C — Reliability patterns** | ⬜ Planned | Add `Idempotency-Key` support for mutating APIs, TTL-based deduplication storage, and later an outbox table if messaging is introduced. |
+| **Phase D — Multitenancy** | ⬜ Optional | Define tenant resolution (`JWT` claim, header, or route), choose DB strategy (`tenant_id` discriminator vs PostgreSQL RLS), add cross-tenant isolation tests. Only add this when the product is truly multi-tenant. |
+| **Phase E — Compliance packaging** | ⬜ Optional | Add non-binding GDPR/SOC2-style control mapping: audit log fields, retention notes, PII handling guidance, backup/restore evidence, and operator checklists. |
+| **Phase F — SRE alerting** | ⬜ Planned | Convert SLO targets from ADR 0002 into Prometheus rule files or Grafana alert rules, then document notification-channel wiring for the platform/on-call tool. |
+| **Phase G — Event-driven integration and orchestration** | ⬜ Planned | Add broker, async contracts, outbox, idempotent consumers, async observability, DLQ/replay runbooks, and optional workflow-engine ADR. See [`docs/roadmap/event-driven-orchestration.md`](docs/roadmap/event-driven-orchestration.md). |
+
+### Recommended next implementation order
+
+1. **Finish Phase B**: rate limiting ownership at Gateway API / Envoy level, security headers, CORS template, and an AuthZ example.
+2. **Add Phase F alerting**: SLOs become operational only after concrete alert rules and notification wiring exist.
+3. **Add Phase C.1**: `Idempotency-Key` for mutating HTTP operations before introducing asynchronous messaging.
+4. **Start Phase G only after a broker decision**: Kafka, RabbitMQ, NATS JetStream, Pulsar, or a managed platform should be selected by ADR before code is added.
+
+### Explicitly not included yet
+
+- No application-level rate limiter is shipped today; the current decision is to enforce request limits at the platform gateway unless a service-specific fallback is needed.
+- No message broker, outbox publisher, consumer framework, or workflow engine is included today.
+- No multi-tenant data model is included today.
+- No compliance pack is included today.
+- No production container registry push is enabled today; workflows are prepared but intentionally keep image push as a dry run until the registry is chosen.
+- No self-hosted SonarQube server is deployed by this repository; deployment belongs to `infra-bootstrap`, while this repository already contains the scanner configuration and CI hook.
 
 ---
 
