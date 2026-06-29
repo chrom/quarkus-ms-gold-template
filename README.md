@@ -251,7 +251,7 @@ The template intentionally starts with a strong synchronous HTTP + PostgreSQL + 
 | **Phase D — Multitenancy** | ⬜ Optional | Define tenant resolution (`JWT` claim, header, or route), choose DB strategy (`tenant_id` discriminator vs PostgreSQL RLS), add cross-tenant isolation tests. Only add this when the product is truly multi-tenant. |
 | **Phase E — Compliance packaging** | ⬜ Optional | Add non-binding GDPR/SOC2-style control mapping: audit log fields, retention notes, PII handling guidance, backup/restore evidence, and operator checklists. |
 | **Phase F — SRE alerting** | ⬜ Planned | Convert SLO targets from ADR 0002 into Prometheus rule files or Grafana alert rules, then document notification-channel wiring for the platform/on-call tool. |
-| **Phase G — Event-driven integration and orchestration** | ⬜ Planned | Add broker, async contracts, outbox, idempotent consumers, async observability, DLQ/replay runbooks, and optional workflow-engine ADR. See [`docs/roadmap/event-driven-orchestration.md`](docs/roadmap/event-driven-orchestration.md). |
+| **Phase G — Event-driven integration and orchestration** | ⬜ Planned | Add broker, async contracts, outbox, idempotent consumers, async observability, request/trace context propagation through message headers, DLQ/replay runbooks, and optional workflow-engine ADR. See [`docs/roadmap/event-driven-orchestration.md`](docs/roadmap/event-driven-orchestration.md). |
 
 ### Recommended next implementation order
 
@@ -268,6 +268,46 @@ The template intentionally starts with a strong synchronous HTTP + PostgreSQL + 
 - No compliance pack is included today.
 - No production container registry push is enabled today; workflows are prepared but intentionally keep image push as a dry run until the registry is chosen.
 - No self-hosted SonarQube server is deployed by this repository; deployment belongs to `infra-bootstrap`, while this repository already contains the scanner configuration and CI hook.
+
+### Observability and debugging gaps
+
+The current template already has HTTP-centric observability: `X-Request-Id`, OpenTelemetry traces, Micrometer metrics, JSON logs in prod, Loki, Jaeger, Prometheus, and Grafana correlation. The remaining work is to make that contract stricter and ready for asynchronous systems:
+
+| Gap | What to add | Owner |
+|-----|-------------|-------|
+| **Runtime verification of log correlation** | Verify in `make up-prod` + Loki that prod JSON logs contain `requestId`, `traceId`, and `spanId`. If Quarkus/OpenTelemetry does not populate `traceId`/`spanId` in MDC for this runtime, add a small request filter/enricher that reads `Span.current().getSpanContext()` and writes those fields into MDC. | Service template |
+| **Stable JSON log schema** | Move important request fields out of free-form log messages into structured fields: `event`, `method`, `path`, `status`, `durationMs`, `requestId`, `traceId`, `spanId`, `clientIp`, `userAgent`. | Service template |
+| **Trace id in error responses** | Extend `ProblemDetail` with `traceId` so support/on-call can jump from a client error response directly to Jaeger/Tempo, not only through `requestId`. | Service template |
+| **Span error enrichment** | Add span events/attributes for failures: `error.type`, safe `error.message`, `http.response.status_code`, and domain failure type. Do not put secrets, raw tokens, or PII into spans. | Service template |
+| **Domain trace attributes** | Add low-cardinality business attributes where useful: `operation`, `product.id`, `category.id`, `outcome`. Avoid high-cardinality or sensitive values such as names, emails, full payloads, or access tokens. | Service template |
+| **Alert rules as code** | Provision Prometheus rule files or Grafana alert rules for ADR 0002 SLOs: 5xx rate, p95 latency, DB pool saturation, fallback spike, target down/no metrics. | Platform + template examples |
+| **Production tracing backend** | Keep Jaeger for local development, but choose Tempo or another production tracing backend in `infra-bootstrap`; the service should continue to export OTLP so the backend can change without code changes. | Platform |
+| **Async context propagation** | When queues/events are introduced, propagate `requestId`, W3C `traceparent`/`tracestate`, `eventId`, `correlationId`, `causationId`, and producer metadata in message headers. | Service template + platform conventions |
+| **Async dashboards and runbooks** | Add dashboards and runbooks for consumer lag, DLQ depth, replay rate, poison messages, stuck workflows, and broker availability. | Platform + service owners |
+
+### Request id propagation through queues
+
+When this template grows beyond synchronous HTTP, **yes — `requestId` should be propagated through queues**, but it should not replace OpenTelemetry trace context.
+
+Recommended message-header contract:
+
+| Header / field | Purpose |
+|----------------|---------|
+| `X-Request-Id` or `requestId` | Human/support-friendly correlation id that started at the edge HTTP request. Keep it stable across producers and consumers. |
+| `traceparent` | W3C Trace Context header used by OpenTelemetry to continue the same distributed trace across producer → broker → consumer. |
+| `tracestate` | Optional W3C vendor/context extension; propagate if present. |
+| `eventId` | Unique id of this emitted event/message. Used for deduplication, DLQ, replay, and audits. |
+| `correlationId` | Business/process correlation id. Often same as `requestId` for simple request-driven events, but may be an order id, saga id, or workflow id for long-running flows. |
+| `causationId` | Id of the command/event that caused this event. Useful for reconstructing event chains. |
+| `producer` / `eventType` / `eventVersion` | Operational metadata for debugging, compatibility checks, and runbooks. |
+
+Rules:
+
+1. **Do not generate new `requestId` on every queue hop** if the message was caused by an existing request. Reuse the incoming one.
+2. **Do generate a new `requestId`** for scheduled/background jobs that have no upstream request.
+3. **Do not manually invent `traceId`/`spanId`**. Let OpenTelemetry inject/extract `traceparent` and create spans.
+4. **Always create a unique `eventId`** per message. This is not the same thing as `requestId`.
+5. **Never put sensitive data in headers**: no JWTs, credentials, emails, full names, raw payload fragments, or payment data.
 
 ---
 

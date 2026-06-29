@@ -73,10 +73,6 @@ Thumbs.db
 .agent/
 .agents/
 .claude/
-# Local Cursor UI state stays untracked; shared agent rules + CLI overrides are tracked.
-.cursor/*
-!.cursor/rules/
-!.cursor/rules/**
-!.cursor/cli.json
+.cursor/
 .aider*
 .copilot*
