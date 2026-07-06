@@ -16,11 +16,11 @@
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.version>3.34.2</quarkus.platform.version>
         <skipITs>true</skipITs>
-        <surefire-plugin.version>3.5.5</surefire-plugin.version>
+        <surefire-plugin.version>3.5.6</surefire-plugin.version>
         <!-- Supply-chain tooling. Keep pinned; these plugins participate in every PR build. -->
         <!-- jacoco 0.8.14+ required for Java 25 class-file support (major 69). -->
         <jacoco-plugin.version>0.8.14</jacoco-plugin.version>
-        <cyclonedx-plugin.version>2.9.1</cyclonedx-plugin.version>
+        <cyclonedx-plugin.version>2.9.2</cyclonedx-plugin.version>
     </properties>
 
     <dependencyManagement>
