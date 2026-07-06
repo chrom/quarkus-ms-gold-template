@@ -19,7 +19,7 @@
         <surefire-plugin.version>3.5.5</surefire-plugin.version>
         <!-- Supply-chain tooling. Keep pinned; these plugins participate in every PR build. -->
         <!-- jacoco 0.8.14+ required for Java 25 class-file support (major 69). -->
-        <jacoco-plugin.version>0.8.14</jacoco-plugin.version>
+        <jacoco-plugin.version>0.8.15</jacoco-plugin.version>
         <cyclonedx-plugin.version>2.9.1</cyclonedx-plugin.version>
     </properties>
 
@@ -125,7 +125,7 @@
         <dependency>
             <groupId>com.tngtech.archunit</groupId>
             <artifactId>archunit-junit5</artifactId>
-            <version>1.4.1</version>
+            <version>1.4.2</version>
             <scope>test</scope>
         </dependency>
         <!--
