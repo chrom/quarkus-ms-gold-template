@@ -112,7 +112,7 @@ jobs:
 
       # Cache Maven build output for downstream jobs (image build reuses target/quarkus-app).
       - name: Cache Quarkus build output
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             target/quarkus-app
@@ -136,7 +136,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Restore Quarkus build output
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             target/quarkus-app
