@@ -159,7 +159,7 @@ jobs:
       # Local build only. We load the image into the runner's docker daemon
       # so the next job (trivy) can scan it by tag without a registry round-trip.
       - name: Build JVM image (local load)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/main/docker/Dockerfile.jvm
